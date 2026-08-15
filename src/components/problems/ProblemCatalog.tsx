@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { ProblemFilters } from './ProblemFilters';
-import { ProblemItem, ProblemData } from './ProblemItem';
+import { ProblemTableRow, ProblemCard, ProblemData } from './ProblemItem';
 import { ProblemPagination } from './ProblemPagination';
 
 interface FilterOption {
@@ -376,7 +376,7 @@ export function ProblemCatalog() {
               </thead>
               <tbody className="divide-y divide-border/50">
                 {problems.map((problem) => (
-                  <ProblemItem
+                  <ProblemTableRow
                     key={problem.id}
                     problem={problem}
                     isAuthenticated={isAuthenticated}
@@ -392,7 +392,7 @@ export function ProblemCatalog() {
           {/* Mobile Cards View */}
           <div className="md:hidden space-y-3">
             {problems.map((problem) => (
-              <ProblemItem
+              <ProblemCard
                 key={problem.id}
                 problem={problem}
                 isAuthenticated={isAuthenticated}
