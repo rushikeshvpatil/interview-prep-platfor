@@ -92,14 +92,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* Logo */}
-        <div className="flex h-[var(--header-height)] items-center gap-2.5 border-b border-sidebar-border px-5">
+        <Link
+          href="/"
+          className="flex h-[var(--header-height)] items-center gap-2.5 border-b border-sidebar-border px-5 hover:opacity-90 transition-opacity"
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
             </svg>
           </div>
           <span className="text-base font-semibold tracking-tight text-foreground">InterviewPrep</span>
-        </div>
+        </Link>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">

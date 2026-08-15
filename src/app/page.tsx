@@ -118,14 +118,14 @@ export default function LandingPage() {
       {/* ───── Navbar ───── */}
       <nav className="sticky top-0 z-50 border-b border-border bg-[var(--header-bg)] backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
               </svg>
             </div>
             <span className="text-base font-semibold tracking-tight">InterviewPrep</span>
-          </div>
+          </Link>
           <div className="flex items-center gap-3">
             <LandingThemeToggle />
             <Link href="/dashboard">
@@ -176,7 +176,7 @@ export default function LandingPage() {
           {/* Stats */}
           <div className="mt-20 grid grid-cols-2 sm:grid-cols-4 gap-8 max-w-2xl mx-auto">
             {[
-              { value: "500+", label: "Problems" },
+              { value: "Curated", label: "Problem Sets" },
               { value: "AI", label: "Mock Interviews" },
               { value: "STAR", label: "Method Builder" },
               { value: "24/7", label: "Practice Anytime" },
@@ -265,14 +265,14 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex flex-col items-center sm:items-start gap-2">
-              <div className="flex items-center gap-2.5">
+              <Link href="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity">
                 <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
                   </svg>
                 </div>
                 <span className="text-sm font-semibold">Interview Prep Platform</span>
-              </div>
+              </Link>
               <p className="text-sm text-muted-foreground text-center sm:text-left max-w-xs">
                 An open-source interview preparation platform for developers.
               </p>

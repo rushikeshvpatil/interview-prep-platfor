@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { ThemeToggle } from '../ThemeToggle';
 
 interface HeaderProps {
@@ -20,7 +21,12 @@ export function Header({ onMenuToggle }: HeaderProps) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
           </svg>
         </button>
-        <span className="text-sm text-muted-foreground hidden sm:block">Interview Prep Platform</span>
+        <Link
+          href="/"
+          className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+        >
+          Interview Prep Platform
+        </Link>
       </div>
 
       {/* Right: actions */}
