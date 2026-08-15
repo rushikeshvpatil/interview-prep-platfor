@@ -36,15 +36,18 @@ export function ThemeScript() {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light');
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('theme') as Theme | null;
     const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const initial = stored || (systemDark ? 'dark' : 'light');
-    setTheme(initial);
+    
+    // Sync with DOM attribute on mount
     document.documentElement.setAttribute('data-theme', initial);
-    setMounted(true);
+    if (initial !== 'light') {
+      // Async state update to avoid cascading synchronous render in effect
+      queueMicrotask(() => setTheme(initial));
+    }
   }, []);
 
   const toggleTheme = () => {
@@ -54,8 +57,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute('data-theme', next);
   };
 
-  // Always render the provider so useTheme never fails, even during SSR.
-  // The ThemeScript handles the initial visual state to prevent flash.
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       {children}

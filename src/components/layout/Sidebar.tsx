@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 
 interface NavItem {
   label: string;
@@ -64,6 +65,15 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: 'Profile',
+    href: '/profile',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+      </svg>
+    ),
+  },
 ];
 
 interface SidebarProps {
@@ -73,6 +83,8 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const user = session?.user;
 
   return (
     <>
@@ -129,12 +141,51 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </ul>
         </nav>
 
-        {/* Sidebar footer */}
-        <div className="border-t border-sidebar-border p-4">
-          <div className="rounded-lg bg-primary/5 p-3">
-            <p className="text-xs font-medium text-primary">Step 1 Complete</p>
-            <p className="text-xs text-muted-foreground mt-1">Project setup & design system</p>
-          </div>
+        {/* Sidebar user / auth footer */}
+        <div className="border-t border-sidebar-border p-3">
+          {user ? (
+            <div className="rounded-lg bg-card border border-border p-3">
+              <Link
+                href="/profile"
+                onClick={onClose}
+                className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
+              >
+                {user.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.image}
+                    alt={user.name || 'Avatar'}
+                    className="h-8 w-8 rounded-full border border-border object-cover"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                )}
+                <div className="flex-1 overflow-hidden text-left">
+                  <p className="text-xs font-medium text-foreground truncate">{user.name || 'Candidate'}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                </div>
+              </Link>
+              <button
+                onClick={() => signOut({ callbackUrl: '/' })}
+                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+                </svg>
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/signin"
+              onClick={onClose}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
+            >
+              Sign In to Save Progress
+            </Link>
+          )}
         </div>
       </aside>
     </>

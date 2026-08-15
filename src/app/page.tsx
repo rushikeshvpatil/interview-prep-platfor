@@ -128,6 +128,12 @@ export default function LandingPage() {
           </Link>
           <div className="flex items-center gap-3">
             <LandingThemeToggle />
+            <Link
+              href="/signin"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+            >
+              Sign In
+            </Link>
             <Link href="/dashboard">
               <Button size="sm">Get Started</Button>
             </Link>
