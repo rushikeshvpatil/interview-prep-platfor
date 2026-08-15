@@ -4,15 +4,16 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 
 ## Current Status
 
-**Step 2 — Authentication (Google & GitHub OAuth)** ✅
+**Step 4 — Coding Problems Catalog & Filters** ✅
 
 - Next.js 16 with App Router and TypeScript
 - Auth.js v5 with Google & GitHub OAuth providers
-- Prisma ORM with PostgreSQL Auth models (`User`, `Account`, `Session`, `VerificationToken`)
-- Protected route middleware for dashboard, practice modules, and profile
-- Custom sign-in page with loading/error handling
-- Profile page with active session details and sign-out
-- Responsive layout with auth-aware header and sidebar navigation
+- Neon PostgreSQL database with 54 curated real coding problems across 5 platforms (LeetCode, CSES, Codeforces, HackerRank, AtCoder)
+- Database-backed search with title, platform, and topic matching
+- Combinable filters: Difficulty (Easy/Medium/Hard), Platform, dynamic Topics, Companies, and User Status (Solved/Attempted/Unsolved)
+- Flexible sorting & database pagination ("Showing 1–12 of 54")
+- Live bookmarking and manual progress status tracking (Solved, Attempted, Unsolved)
+- Direct external links to authentic problem pages with responsive desktop table and mobile card layout
 - Dark/light theme support with zero flash
 
 ## Tech Stack
@@ -26,8 +27,6 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 | Auth | Auth.js v5 (NextAuth) |
 | ORM | Prisma 6 |
 | Database | PostgreSQL (Neon) |
-| Code Editor | Monaco Editor (planned) |
-| Code Execution | Judge0 API (planned) |
 | AI | Google Gemini API (planned) |
 | Deployment | Vercel (planned) |
 
@@ -35,10 +34,8 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 
 - [x] Project setup & design system
 - [x] Authentication (GitHub & Google OAuth)
-- [ ] Database schema & seed data
-- [ ] Coding problems list & filters
-- [ ] Problem detail page with Monaco code editor
-- [ ] Judge0 code execution integration
+- [x] Database schema & curated seed data (54 real problems)
+- [x] Coding problems catalog, search & filters
 - [ ] AI mock interviewer with scorecards
 - [ ] Behavioral interview preparation
 - [ ] Dashboard & progress tracking
@@ -67,8 +64,12 @@ npm install
 cp .env.example .env
 # Fill in your environment variables in .env (Database URL, Auth secret, OAuth credentials)
 
-# Generate Prisma Client
+# Generate Prisma Client & apply migrations
 npx prisma generate
+npx prisma migrate deploy
+
+# Seed curated problem catalog
+npm run db:seed
 ```
 
 ### Development
