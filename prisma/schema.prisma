@@ -25,6 +25,15 @@ model User {
   accounts      Account[]
   sessions      Session[]
 
+  // Candidate profile & interview preferences
+  bio                 String?
+  experienceLevel     String? // BEGINNER | INTERMEDIATE | ADVANCED
+  targetRole          String? // SDE | FRONTEND | BACKEND | FULL_STACK | SOFTWARE_ENGINEER | OTHER
+  targetCompanies     String[]   @default([])
+  primaryFocus        String? // DSA | SYSTEM_DESIGN | FULL_STACK | BEHAVIORAL | MIXED
+  targetInterviewDate DateTime?
+  preferredDifficulty Difficulty @default(MEDIUM)
+
   // Prep platform relations
   bookmarks   Bookmark[]
   progress    UserProblemProgress[]

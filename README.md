@@ -4,7 +4,7 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 
 ## Current Status
 
-**Step 4 — Coding Problems Catalog & Filters** ✅
+**Step 5 — Candidate Profile & Interview Preferences** ✅
 
 - Next.js 16 with App Router and TypeScript
 - Auth.js v5 with Google & GitHub OAuth providers
@@ -13,6 +13,8 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 - Combinable filters: Difficulty (Easy/Medium/Hard), Platform, dynamic Topics, Companies, and User Status (Solved/Attempted/Unsolved)
 - Flexible sorting & database pagination ("Showing 1–12 of 54")
 - Live bookmarking and manual progress status tracking (Solved, Attempted, Unsolved)
+- Candidate Profile & Interview Preferences: Experience level, target role, target companies, primary focus, preferred difficulty, and target interview date countdown
+- Preparation Summary: Real-time database counters for solved problems, attempts, and bookmarks
 - Direct external links to authentic problem pages with responsive desktop table and mobile card layout
 - Dark/light theme support with zero flash
 
@@ -27,7 +29,7 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 | Auth | Auth.js v5 (NextAuth) |
 | ORM | Prisma 6 |
 | Database | PostgreSQL (Neon) |
-| AI | Google Gemini API (planned) |
+| AI | Google Gemini API (planned for Step 6) |
 | Deployment | Vercel (planned) |
 
 ## Roadmap
@@ -36,6 +38,7 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 - [x] Authentication (GitHub & Google OAuth)
 - [x] Database schema & curated seed data (54 real problems)
 - [x] Coding problems catalog, search & filters
+- [x] Candidate profile & interview preferences
 - [ ] AI mock interviewer with scorecards
 - [ ] Behavioral interview preparation
 - [ ] Dashboard & progress tracking
