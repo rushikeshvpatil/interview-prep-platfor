@@ -10,6 +10,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -18,6 +24,12 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+
+  // Prep platform relations
+  bookmarks   Bookmark[]
+  progress    UserProblemProgress[]
+  submissions Submission[]
+  notes       Note[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -60,4 +72,151 @@ model VerificationToken {
   expires    DateTime
 
   @@id([identifier, token])
+}
+
+// ==========================================
+// PROBLEM CATALOG MODELS
+// ==========================================
+
+model Problem {
+  id          String     @id @default(cuid())
+  title       String
+  slug        String     @unique
+  platform    String
+  externalUrl String
+  externalId  String?
+  difficulty  Difficulty @default(MEDIUM)
+  summary     String?
+  constraints String?
+
+  topics      ProblemTopic[]
+  companies   ProblemCompany[]
+  bookmarks   Bookmark[]
+  progress    UserProblemProgress[]
+  submissions Submission[]
+  notes       Note[]
+  testCases   TestCase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([platform])
+  @@index([difficulty])
+  @@index([title])
+}
+
+model Topic {
+  id       String         @id @default(cuid())
+  name     String         @unique
+  slug     String         @unique
+  problems ProblemTopic[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Company {
+  id       String           @id @default(cuid())
+  name     String           @unique
+  slug     String           @unique
+  problems ProblemCompany[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProblemTopic {
+  problemId String
+  topicId   String
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  topic   Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, topicId])
+}
+
+model ProblemCompany {
+  problemId String
+  companyId String
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, companyId])
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  problemId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+}
+
+model UserProblemProgress {
+  id            String    @id @default(cuid())
+  userId        String
+  problemId     String
+  attempted     Boolean   @default(false)
+  solved        Boolean   @default(false)
+  attempts      Int       @default(0)
+  solvedAt      DateTime?
+  lastAttemptAt DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, problemId])
+}
+
+model Submission {
+  id            String  @id @default(cuid())
+  userId        String
+  problemId     String
+  language      String
+  sourceCode    String
+  verdict       String
+  stdout        String?
+  stderr        String?
+  executionTime Float?
+  memory        Float?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model Note {
+  id        String @id @default(cuid())
+  userId    String
+  problemId String
+  content   String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, problemId])
+}
+
+model TestCase {
+  id             String  @id @default(cuid())
+  problemId      String
+  input          String
+  expectedOutput String
+  isHidden       Boolean @default(false)
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 }
