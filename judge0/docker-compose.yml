@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  server:
+    image: judge0/judge0:1.13.1
+    restart: always
+    ports:
+      - "2358:2358"
+    environment:
+      - JUDGE0_AUTOCONFIG=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-judge0}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-judge0password}
+      - POSTGRES_DB=${POSTGRES_DB:-judge0}
+      - AUTH_TOKEN=${JUDGE0_AUTH_TOKEN:-secret_interview_token}
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    depends_on:
+      - db
+      - redis
+    networks:
+      - judge0-network
+
+  workers:
+    image: judge0/judge0:1.13.1
+    restart: always
+    privileged: true
+    environment:
+      - JUDGE0_AUTOCONFIG=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-judge0}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-judge0password}
+      - POSTGRES_DB=${POSTGRES_DB:-judge0}
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    depends_on:
+      - db
+      - redis
+    networks:
+      - judge0-network
+
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-judge0}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-judge0password}
+      - POSTGRES_DB=${POSTGRES_DB:-judge0}
+    volumes:
+      - judge0-db-data:/var/lib/postgresql/data
+    networks:
+      - judge0-network
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - judge0-redis-data:/data
+    networks:
+      - judge0-network
+
+volumes:
+  judge0-db-data:
+  judge0-redis-data:
+
+networks:
+  judge0-network:
+    driver: bridge

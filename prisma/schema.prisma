@@ -16,6 +16,23 @@ enum Difficulty {
   HARD
 }
 
+enum InterviewMode {
+  AI
+  PEER
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum FeedbackSource {
+  AI
+  PEER
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -35,10 +52,12 @@ model User {
   preferredDifficulty Difficulty @default(MEDIUM)
 
   // Prep platform relations
-  bookmarks   Bookmark[]
-  progress    UserProblemProgress[]
-  submissions Submission[]
-  notes       Note[]
+  bookmarks           Bookmark[]
+  progress            UserProblemProgress[]
+  submissions         Submission[]
+  notes               Note[]
+  candidateSessions   InterviewSession[]    @relation("CandidateSessions")
+  interviewerSessions InterviewSession[]    @relation("InterviewerSessions")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -98,13 +117,14 @@ model Problem {
   summary     String?
   constraints String?
 
-  topics      ProblemTopic[]
-  companies   ProblemCompany[]
-  bookmarks   Bookmark[]
-  progress    UserProblemProgress[]
-  submissions Submission[]
-  notes       Note[]
-  testCases   TestCase[]
+  topics            ProblemTopic[]
+  companies         ProblemCompany[]
+  bookmarks         Bookmark[]
+  progress          UserProblemProgress[]
+  submissions       Submission[]
+  notes             Note[]
+  testCases         TestCase[]
+  interviewSessions InterviewSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -228,4 +248,81 @@ model TestCase {
   problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+}
+
+// ==========================================
+// INTERVIEW SESSION & EXECUTION MODELS
+// ==========================================
+
+model InterviewSession {
+  id              String        @id @default(cuid())
+  userId          String // Candidate User ID
+  interviewerId   String? // Null for AI mode, Peer User ID for Peer mode
+  problemId       String? // Target problem for session
+  mode            InterviewMode @default(AI)
+  status          SessionStatus @default(SCHEDULED)
+  durationMinutes Int           @default(45)
+  scheduledAt     DateTime
+  startedAt       DateTime?
+  endedAt         DateTime?
+  inviteToken     String?       @unique @default(cuid())
+
+  candidate   User     @relation("CandidateSessions", fields: [userId], references: [id], onDelete: Cascade)
+  interviewer User?    @relation("InterviewerSessions", fields: [interviewerId], references: [id], onDelete: SetNull)
+  problem     Problem? @relation(fields: [problemId], references: [id], onDelete: SetNull)
+
+  submissions SessionSubmission[]
+  feedback    SessionFeedback[]
+  codeDraft   SessionCodeDraft?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([interviewerId])
+  @@index([status])
+}
+
+model SessionSubmission {
+  id              String   @id @default(cuid())
+  sessionId       String
+  code            String
+  language        String // "python", "javascript", "typescript", "cpp", "java"
+  verdict         String // "ACCEPTED", "WRONG_ANSWER", "TIME_LIMIT_EXCEEDED", etc.
+  stdout          String?
+  stderr          String?
+  compileOutput   String?
+  executionTime   Float?
+  memory          Float?
+  testCasesPassed Int?
+  totalTestCases  Int?
+  createdAt       DateTime @default(now())
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model SessionFeedback {
+  id           String         @id @default(cuid())
+  sessionId    String
+  source       FeedbackSource
+  authorId     String? // Null if AI, User ID if peer
+  rubricScores Json // { correctness: 8, complexity: 9, codeQuality: 8, communication: 7 }
+  notes        String // Detailed feedback markdown
+  createdAt    DateTime       @default(now())
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model SessionCodeDraft {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  code      String
+  language  String   @default("python")
+  updatedAt DateTime @updatedAt
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }

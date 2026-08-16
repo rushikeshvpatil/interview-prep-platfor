@@ -10,6 +10,7 @@ export default auth((req) => {
     '/dashboard',
     '/problems',
     '/mock-interview',
+    '/interview',
     '/behavioral',
     '/bookmarks',
     '/progress',

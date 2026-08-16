@@ -1,50 +1,50 @@
 # Interview Prep Platform
 
-A full-stack, AI-powered interview preparation platform built as a portfolio project. Practice coding problems, take AI mock interviews, prepare for behavioral questions, and track your progress — all in one place.
+A full-stack, AI-powered interview preparation platform built as a portfolio project. Practice coding problems, schedule AI & Peer mock interviews, prepare for behavioral questions, and track your progress — all in one place.
 
 ## Current Status
 
-**Step 5 — Candidate Profile & Interview Preferences** ✅
+**Phase 6 — Scheduled Interview Sessions & Gated Monaco / Judge0 Engine** ✅
 
-- Next.js 16 with App Router and TypeScript
+- Next.js 16 with App Router, TypeScript, and Tailwind CSS v4
 - Auth.js v5 with Google & GitHub OAuth providers
 - Neon PostgreSQL database with 54 curated real coding problems across 5 platforms (LeetCode, CSES, Codeforces, HackerRank, AtCoder)
 - Database-backed search with title, platform, and topic matching
 - Combinable filters: Difficulty (Easy/Medium/Hard), Platform, dynamic Topics, Companies, and User Status (Solved/Attempted/Unsolved)
-- Flexible sorting & database pagination ("Showing 1–12 of 54")
-- Live bookmarking and manual progress status tracking (Solved, Attempted, Unsolved)
-- Candidate Profile & Interview Preferences: Experience level, target role, target companies, primary focus, preferred difficulty, and target interview date countdown
-- Preparation Summary: Real-time database counters for solved problems, attempts, and bookmarks
-- Direct external links to authentic problem pages with responsive desktop table and mobile card layout
-- Dark/light theme support with zero flash
+- Candidate Profile & Interview Preferences: Experience level, target role, target companies, primary focus, preferred difficulty, and target interview countdown
+- **Scheduled Interview Sessions (`/interview/schedule`)**: Create AI and Peer interview sessions with custom durations (30m, 45m, 60m)
+- **Gated Monaco Editor (`/interview/[sessionId]`)**: In-browser code editor strictly restricted to authorized interview participants
+- **Self-Hosted Judge0 CE Engine (`judge0/`)**: Docker Compose infrastructure for AWS EC2/VPS with cgroups sandboxing, multi-language support (Python, JS, TS, C++, Java), and server-side execution pipeline
+- **Code Draft Persistence**: Periodic autosave storing candidate code drafts in PostgreSQL with real-time countdown timer
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Framework | Next.js 16 (App Router) |
+| Frontend Framework | Next.js 16 (App Router) |
 | Language | TypeScript |
-| UI | React 19 |
+| UI | React 19 + Monaco Editor |
 | Styling | Tailwind CSS v4 |
 | Auth | Auth.js v5 (NextAuth) |
 | ORM | Prisma 6 |
 | Database | PostgreSQL (Neon) |
-| AI | Google Gemini API (planned for Step 6) |
-| Deployment | Vercel (planned) |
+| Code Execution | Self-Hosted Judge0 CE (AWS EC2 Docker Stack) |
+| AI | Google Gemini API (planned for Phase 7) |
+| Deployment | Vercel (App) + AWS EC2 (Judge0) |
 
 ## Roadmap
 
-- [x] Project setup & design system
-- [x] Authentication (GitHub & Google OAuth)
-- [x] Database schema & curated seed data (54 real problems)
-- [x] Coding problems catalog, search & filters
-- [x] Candidate profile & interview preferences
-- [ ] AI mock interviewer with scorecards
-- [ ] Behavioral interview preparation
-- [ ] Dashboard & progress tracking
-- [ ] Bookmarks, notes & spaced repetition
-- [ ] UI polish & animations
-- [ ] Production deployment
+- [x] Phase 1: Project setup & design system
+- [x] Phase 2: Authentication (GitHub & Google OAuth)
+- [x] Phase 3: Database schema & curated seed data (54 real problems)
+- [x] Phase 4: Coding problems catalog, search & filters
+- [x] Phase 5: Candidate profile & interview preferences
+- [x] Phase 6: Scheduled interview sessions & gated Monaco / Judge0 engine
+- [ ] Phase 7: AI mock interviewer engine (Google Gemini)
+- [ ] Phase 8: Peer interview mode & collaborative review
+- [ ] Phase 9: Behavioral interview preparation (STAR method)
+- [ ] Phase 10: Dashboard, progress analytics & spaced revision hub
+- [ ] Phase 11: UI polish, SEO & production deployment
 
 ## Getting Started
 
@@ -52,6 +52,7 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 
 - Node.js 18+
 - npm
+- Docker & Docker Compose (for local Judge0 testing)
 
 ### Installation
 
@@ -75,6 +76,13 @@ npx prisma migrate deploy
 npm run db:seed
 ```
 
+### Starting Self-Hosted Judge0 (Optional / Local Dev)
+
+```bash
+cd judge0
+docker-compose up -d
+```
+
 ### Development
 
 ```bash
@@ -83,21 +91,12 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Build
-
-```bash
-npm run build
-```
-
-### Lint
+### Build & Lint
 
 ```bash
 npm run lint
+npm run build
 ```
-
-## Environment Variables
-
-See `.env.example` for all required environment variables. Never commit real credentials to the repository.
 
 ## License
 
