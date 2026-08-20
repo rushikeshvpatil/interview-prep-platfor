@@ -20,7 +20,7 @@ export async function GET() {
         orderBy: { scheduledAt: 'desc' },
         include: {
           problem: {
-            select: { id: true, title: true, difficulty: true, platform: true, summary: true },
+            select: { id: true, title: true, difficulty: true, platform: true, summary: true, constraints: true },
           },
           candidate: {
             select: { id: true, name: true, image: true },
@@ -31,6 +31,9 @@ export async function GET() {
           feedback: {
             select: { id: true, source: true, recommendation: true, rubricScores: true, createdAt: true },
           },
+          testCases: {
+            select: { id: true, input: true, expectedOutput: true, isHidden: true },
+          },
           _count: {
             select: { submissions: true },
           },
@@ -39,11 +42,24 @@ export async function GET() {
       prisma.problem.findMany({
         take: 50,
         orderBy: { title: 'asc' },
-        select: { id: true, title: true, difficulty: true, platform: true },
+        select: { id: true, title: true, difficulty: true, platform: true, summary: true, constraints: true },
       }),
     ]);
 
-    return NextResponse.json({ sessions, problems });
+    // Strict Security Filtering: Never leak hidden test case input/output to the candidate!
+    const sanitizedSessions = sessions.map((sess) => {
+      const isInterviewer = sess.interviewerId === userId;
+      return {
+        ...sess,
+        testCases: isInterviewer
+          ? sess.testCases
+          : sess.testCases
+              .filter((tc) => !tc.isHidden)
+              .map((tc) => ({ id: tc.id, input: tc.input, expectedOutput: tc.expectedOutput, isHidden: false })),
+      };
+    });
+
+    return NextResponse.json({ sessions: sanitizedSessions, problems });
   } catch (error) {
     console.error('Error fetching interview sessions:', error);
     return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 });
@@ -60,7 +76,16 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id;
     const body = await request.json();
 
-    const { mode, problemId, scheduledAt, durationMinutes } = body;
+    const {
+      mode,
+      problemId,
+      customTitle,
+      customDescription,
+      customConstraints,
+      testCases,
+      scheduledAt,
+      durationMinutes,
+    } = body;
 
     // Validate mode
     let modeVal: InterviewMode = InterviewMode.AI;
@@ -79,7 +104,7 @@ export async function POST(request: NextRequest) {
       ? Number(durationMinutes)
       : 45;
 
-    // Verify problem exists if provided
+    // Verify catalog problem if provided
     let verifiedProblemId: string | null = null;
     if (problemId) {
       const p = await prisma.problem.findUnique({
@@ -89,19 +114,53 @@ export async function POST(request: NextRequest) {
       if (p) verifiedProblemId = p.id;
     }
 
+    // Validate test cases array if provided
+    const validTestCases: { input: string; expectedOutput: string; isHidden: boolean }[] = [];
+    if (Array.isArray(testCases)) {
+      for (const tc of testCases) {
+        if (typeof tc.input === 'string' && typeof tc.expectedOutput === 'string') {
+          validTestCases.push({
+            input: tc.input.trim(),
+            expectedOutput: tc.expectedOutput.trim(),
+            isHidden: Boolean(tc.isHidden),
+          });
+        }
+      }
+    }
+
+    // OWNERSHIP MODEL:
+    // For PEER interviews: interviewerId = current authenticated user, userId = null (pending candidate invite acceptance)
+    // For AI interviews: userId = current authenticated user, interviewerId = null
+    const isPeer = modeVal === InterviewMode.PEER;
+
     const newSession = await prisma.interviewSession.create({
       data: {
-        userId,
+        userId: isPeer ? null : userId,
+        interviewerId: isPeer ? userId : null,
         mode: modeVal,
         problemId: verifiedProblemId,
+        customTitle: isPeer ? (customTitle?.trim() || null) : null,
+        customDescription: isPeer ? (customDescription?.trim() || null) : null,
+        customConstraints: isPeer ? (customConstraints?.trim() || null) : null,
         scheduledAt: scheduledDate,
         durationMinutes: validDuration,
         status: 'SCHEDULED',
+        testCases: validTestCases.length > 0 ? {
+          create: validTestCases.map((tc) => ({
+            input: tc.input,
+            expectedOutput: tc.expectedOutput,
+            isHidden: tc.isHidden,
+          })),
+        } : undefined,
       },
       include: {
         problem: {
           select: { id: true, title: true, difficulty: true, platform: true },
         },
+        interviewer: {
+          select: { id: true, name: true, image: true },
+        },
+        testCases: true,
       },
     });
 

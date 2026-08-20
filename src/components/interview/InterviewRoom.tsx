@@ -27,7 +27,7 @@ const Editor = dynamic(() => import('@monaco-editor/react'), {
 
 export interface InterviewSessionData {
   id: string;
-  userId: string;
+  userId?: string | null;
   interviewerId?: string | null;
   mode: 'AI' | 'PEER';
   stream?: string;
@@ -48,7 +48,7 @@ export interface InterviewSessionData {
     topics?: { topic: { name: string } }[];
     testCases?: { id: string; input: string; expectedOutput: string }[];
   } | null;
-  candidate: { id: string; name?: string | null; email?: string | null };
+  candidate?: { id: string; name?: string | null; email?: string | null } | null;
   interviewer?: { id: string; name?: string | null; email?: string | null } | null;
   codeDraft?: { code: string; language: string } | null;
   submissions?: {
@@ -79,6 +79,12 @@ interface RunResult {
   compileOutput: string | null;
   executionTime: number | null;
   memory: number | null;
+  testCasesPassed?: number;
+  totalTestCases?: number;
+  publicPassed?: number;
+  publicTotal?: number;
+  hiddenPassed?: number;
+  hiddenTotal?: number;
 }
 
 export function InterviewRoom({ initialSession, currentUserId = '' }: InterviewRoomProps) {
@@ -126,7 +132,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
     broadcastRunResult,
   } = usePeerCollaboration({
     sessionId: session.id,
-    userId: currentUserId || session.userId,
+    userId: currentUserId || session.userId || 'candidate-user',
     role: 'candidate',
     userName: session.candidate?.name || 'Candidate',
     initialCode: code,
@@ -246,8 +252,8 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
     }
   };
 
-  // 4. Run Code Execution
-  const handleRunCode = async () => {
+  // 4. Run / Submit Code Execution
+  const handleExecuteCode = async (action: 'run' | 'submit' = 'run') => {
     if (session.status === 'COMPLETED' || session.status === 'CANCELLED') return;
     setIsRunning(true);
     setActiveOutputTab('output');
@@ -260,6 +266,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
           code,
           language,
           stdin: customStdin,
+          action,
         }),
       });
 
@@ -715,16 +722,16 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
 
               <Button
                 type="button"
-                variant="primary"
+                variant="outline"
                 size="sm"
                 disabled={isRunning || isCompleted}
-                onClick={handleRunCode}
-                className="text-xs h-7 px-3.5 shadow-2xs font-semibold"
+                onClick={() => handleExecuteCode('run')}
+                className="text-xs h-7 px-3 shadow-2xs font-semibold"
               >
                 {isRunning ? (
                   <span className="flex items-center gap-1.5">
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                    Running in Sandbox...
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    Running...
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5">
@@ -732,6 +739,27 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
                       <path d="M8 5v14l11-7z" />
                     </svg>
                     Run Code
+                  </span>
+                )}
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={isRunning || isCompleted}
+                onClick={() => handleExecuteCode('submit')}
+                className="text-xs h-7 px-3.5 shadow-2xs font-semibold"
+              >
+                {isRunning ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                    Evaluating...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <span>⚡</span>
+                    Submit Solution
                   </span>
                 )}
               </Button>

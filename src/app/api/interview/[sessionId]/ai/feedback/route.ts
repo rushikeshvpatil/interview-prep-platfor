@@ -114,9 +114,9 @@ export async function POST(
     // Generate structured scorecard from Gemini
     const scorecard = await generateScorecardFeedback({
       candidate: {
-        name: interviewSession.candidate.name,
-        targetRole: interviewSession.candidate.targetRole,
-        experienceLevel: interviewSession.candidate.experienceLevel,
+        name: interviewSession.candidate?.name,
+        targetRole: interviewSession.candidate?.targetRole,
+        experienceLevel: interviewSession.candidate?.experienceLevel,
       },
       problem: {
         title: interviewSession.problem?.title || 'General Technical Problem',
@@ -145,7 +145,7 @@ export async function POST(
     });
 
     // If candidate problem was solved, also mark UserProblemProgress in catalog
-    if (hasAccepted && interviewSession.problemId) {
+    if (hasAccepted && interviewSession.problemId && interviewSession.userId) {
       await prisma.userProblemProgress.upsert({
         where: {
           userId_problemId: {

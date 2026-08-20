@@ -13,13 +13,17 @@ export async function GET(
       where: { inviteToken },
       include: {
         problem: {
-          select: { id: true, title: true, difficulty: true, platform: true, summary: true },
+          select: { id: true, title: true, difficulty: true, platform: true, summary: true, constraints: true },
         },
         candidate: {
           select: { id: true, name: true, image: true, email: true },
         },
         interviewer: {
           select: { id: true, name: true, image: true },
+        },
+        testCases: {
+          where: { isHidden: false },
+          select: { id: true, input: true, expectedOutput: true, isHidden: true },
         },
       },
     });
@@ -35,6 +39,10 @@ export async function GET(
       );
     }
 
+    const effectiveTitle = interviewSession.problem?.title || interviewSession.customTitle || 'General Algorithmic Problem Solving';
+    const effectiveDescription = interviewSession.problem?.summary || interviewSession.customDescription || '';
+    const effectiveConstraints = interviewSession.problem?.constraints || interviewSession.customConstraints || '';
+
     return NextResponse.json({
       session: {
         id: interviewSession.id,
@@ -45,8 +53,19 @@ export async function GET(
         durationMinutes: interviewSession.durationMinutes,
         candidate: interviewSession.candidate,
         interviewer: interviewSession.interviewer,
-        problem: interviewSession.problem,
-        isAssigned: !!interviewSession.interviewerId,
+        problem: interviewSession.problem || {
+          id: 'custom',
+          title: effectiveTitle,
+          difficulty: 'MEDIUM',
+          platform: 'Custom',
+          summary: effectiveDescription,
+          constraints: effectiveConstraints,
+        },
+        customTitle: interviewSession.customTitle,
+        customDescription: interviewSession.customDescription,
+        customConstraints: interviewSession.customConstraints,
+        publicTestCases: interviewSession.testCases,
+        isAssigned: !!interviewSession.userId,
       },
     });
   } catch (error) {
@@ -83,37 +102,37 @@ export async function POST(
       );
     }
 
-    // Candidate cannot be their own peer interviewer
-    if (interviewSession.userId === currentUserId) {
+    // If current user is the Interviewer who created the session, route them to interview as Interviewer
+    if (interviewSession.interviewerId === currentUserId) {
       return NextResponse.json({
-        message: 'You are the candidate for this session.',
+        message: 'You are the interviewer for this session.',
         sessionId: interviewSession.id,
-        role: 'candidate',
+        role: 'interviewer',
       });
     }
 
-    // If already assigned to someone else
-    if (interviewSession.interviewerId && interviewSession.interviewerId !== currentUserId) {
+    // If session is already claimed by another candidate
+    if (interviewSession.userId && interviewSession.userId !== currentUserId) {
       return NextResponse.json(
-        { error: 'Another interviewer has already joined this session.' },
+        { error: 'Another candidate has already claimed this interview session.' },
         { status: 409 }
       );
     }
 
-    // Assign current user as interviewer and set startedAt / IN_PROGRESS if needed
+    // Assign current authenticated user as Candidate and mark session IN_PROGRESS
     const updated = await prisma.interviewSession.update({
       where: { id: interviewSession.id },
       data: {
-        interviewerId: currentUserId,
+        userId: currentUserId,
         status: interviewSession.status === 'SCHEDULED' ? 'IN_PROGRESS' : interviewSession.status,
         startedAt: interviewSession.startedAt || new Date(),
       },
     });
 
     return NextResponse.json({
-      message: 'Successfully joined peer interview as Interviewer.',
+      message: 'Successfully joined peer interview as Candidate.',
       sessionId: updated.id,
-      role: 'interviewer',
+      role: 'candidate',
     });
   } catch (error) {
     console.error('Error joining peer session:', error);

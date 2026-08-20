@@ -40,10 +40,10 @@ export async function GET(
     if (messages.length === 0 && interviewSession.mode === 'AI') {
       const initialGreeting = await generateInterviewerResponse({
         candidate: {
-          name: interviewSession.candidate.name,
-          targetRole: interviewSession.candidate.targetRole,
-          experienceLevel: interviewSession.candidate.experienceLevel,
-          targetCompanies: interviewSession.candidate.targetCompanies,
+          name: interviewSession.candidate?.name,
+          targetRole: interviewSession.candidate?.targetRole,
+          experienceLevel: interviewSession.candidate?.experienceLevel,
+          targetCompanies: interviewSession.candidate?.targetCompanies,
         },
         problem: {
           title: interviewSession.problem?.title || 'Algorithmic Problem Solving',
@@ -144,10 +144,10 @@ export async function POST(
     // Generate AI Interviewer response
     const interviewerReply = await generateInterviewerResponse({
       candidate: {
-        name: interviewSession.candidate.name,
-        targetRole: interviewSession.candidate.targetRole,
-        experienceLevel: interviewSession.candidate.experienceLevel,
-        targetCompanies: interviewSession.candidate.targetCompanies,
+        name: interviewSession.candidate?.name,
+        targetRole: interviewSession.candidate?.targetRole,
+        experienceLevel: interviewSession.candidate?.experienceLevel,
+        targetCompanies: interviewSession.candidate?.targetCompanies,
       },
       problem: {
         title: interviewSession.problem?.title || 'Algorithmic Problem',

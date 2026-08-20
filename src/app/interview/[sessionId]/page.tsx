@@ -1,14 +1,9 @@
-import { redirect, notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { InterviewRoom, InterviewSessionData } from '@/components/interview/InterviewRoom';
 
-export const metadata = {
-  title: 'Interview Room | Interview Prep Platform',
-  description: 'Live interview session with in-browser code editor and execution sandbox.',
-};
-
-export default async function InterviewSessionPage({
+export default async function InterviewRoomPage({
   params,
 }: {
   params: Promise<{ sessionId: string }>;
@@ -36,6 +31,9 @@ export default async function InterviewSessionPage({
       },
       interviewer: {
         select: { id: true, name: true, image: true, email: true },
+      },
+      testCases: {
+        select: { id: true, input: true, expectedOutput: true, isHidden: true },
       },
       codeDraft: true,
       submissions: {
@@ -73,11 +71,25 @@ export default async function InterviewSessionPage({
         },
         candidate: { select: { id: true, name: true, image: true, email: true } },
         interviewer: { select: { id: true, name: true, image: true, email: true } },
+        testCases: { select: { id: true, input: true, expectedOutput: true, isHidden: true } },
         codeDraft: true,
         submissions: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     });
   }
+
+  const isInterviewer = session.interviewerId === currentUserId;
+
+  // Gather test cases with strict candidate protection (never leak hidden tests to candidate)
+  const rawTestCases = session.testCases?.length > 0
+    ? session.testCases
+    : (session.problem?.testCases || []);
+
+  const sanitizedTestCases = isInterviewer
+    ? rawTestCases
+    : rawTestCases
+        .filter((tc) => !tc.isHidden)
+        .map((tc) => ({ id: tc.id, input: tc.input, expectedOutput: tc.expectedOutput }));
 
   // Format serializable payload
   const formattedSession: InterviewSessionData = {
@@ -100,11 +112,18 @@ export default async function InterviewSessionPage({
           constraints: session.problem.constraints,
           externalUrl: session.problem.externalUrl,
           topics: session.problem.topics.map((t) => ({ topic: { name: t.topic.name } })),
-          testCases: session.problem.testCases.map((tc) => ({
-            id: tc.id,
-            input: tc.input,
-            expectedOutput: tc.expectedOutput,
-          })),
+          testCases: sanitizedTestCases,
+        }
+      : session.customTitle
+      ? {
+          id: 'custom',
+          title: session.customTitle,
+          difficulty: 'MEDIUM',
+          platform: 'Custom Problem',
+          summary: session.customDescription,
+          constraints: session.customConstraints,
+          topics: [],
+          testCases: sanitizedTestCases,
         }
       : null,
     candidate: session.candidate,

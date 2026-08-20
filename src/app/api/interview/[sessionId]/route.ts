@@ -31,6 +31,9 @@ export async function GET(
         interviewer: {
           select: { id: true, name: true, image: true, email: true },
         },
+        testCases: {
+          select: { id: true, input: true, expectedOutput: true, isHidden: true },
+        },
         codeDraft: true,
         submissions: {
           orderBy: { createdAt: 'desc' },
@@ -43,17 +46,18 @@ export async function GET(
       return NextResponse.json({ error: 'Interview session not found' }, { status: 404 });
     }
 
-    // Authorization check
-    const isParticipant =
-      interviewSession.userId === userId || interviewSession.interviewerId === userId;
-    if (!isParticipant) {
+    // Authorization check: User must be candidate OR interviewer
+    const isInterviewer = interviewSession.interviewerId === userId;
+    const isCandidate = interviewSession.userId === userId;
+
+    if (!isInterviewer && !isCandidate) {
       return NextResponse.json(
         { error: 'Forbidden. You are not authorized for this interview session.' },
         { status: 403 }
       );
     }
 
-    // Auto-transition from SCHEDULED to IN_PROGRESS on candidate room entry if past scheduled time
+    // Auto-transition from SCHEDULED to IN_PROGRESS on room entry
     if (interviewSession.status === 'SCHEDULED') {
       interviewSession = await prisma.interviewSession.update({
         where: { id: sessionId },
@@ -71,13 +75,50 @@ export async function GET(
           },
           candidate: { select: { id: true, name: true, image: true, email: true } },
           interviewer: { select: { id: true, name: true, image: true, email: true } },
+          testCases: { select: { id: true, input: true, expectedOutput: true, isHidden: true } },
           codeDraft: true,
           submissions: { orderBy: { createdAt: 'desc' }, take: 10 },
         },
       });
     }
 
-    return NextResponse.json({ session: interviewSession });
+    // Determine effective problem details (Catalog problem vs Custom Interview Problem)
+    const effectiveTitle = interviewSession.problem?.title || interviewSession.customTitle || 'General Algorithmic Problem Solving';
+    const effectiveDescription = interviewSession.problem?.summary || interviewSession.customDescription || '';
+    const effectiveConstraints = interviewSession.problem?.constraints || interviewSession.customConstraints || '';
+
+    const effectiveProblem = interviewSession.problem || {
+      id: 'custom',
+      title: effectiveTitle,
+      slug: 'custom-session-problem',
+      platform: 'Custom',
+      difficulty: 'MEDIUM',
+      summary: effectiveDescription,
+      constraints: effectiveConstraints,
+      topics: [],
+      companies: [],
+      testCases: [],
+    };
+
+    // Gather test cases
+    const allSessionTestCases = interviewSession.testCases?.length > 0
+      ? interviewSession.testCases
+      : (interviewSession.problem?.testCases || []);
+
+    // Strict Security Filtering: If candidate, never leak hidden test cases
+    const sanitizedTestCases = isInterviewer
+      ? allSessionTestCases
+      : allSessionTestCases
+          .filter((tc) => !tc.isHidden)
+          .map((tc) => ({ id: tc.id, input: tc.input, expectedOutput: tc.expectedOutput, isHidden: false }));
+
+    const sanitizedSession = {
+      ...interviewSession,
+      problem: effectiveProblem,
+      testCases: sanitizedTestCases,
+    };
+
+    return NextResponse.json({ session: sanitizedSession });
   } catch (error) {
     console.error('Error fetching interview session:', error);
     return NextResponse.json({ error: 'Failed to fetch session' }, { status: 500 });
@@ -120,27 +161,17 @@ export async function PATCH(
       );
     }
 
-    const updateData: Record<string, unknown> = {};
-
-    if (targetStatus === 'IN_PROGRESS') {
-      updateData.status = 'IN_PROGRESS';
-      if (!existing.startedAt) updateData.startedAt = new Date();
-    } else if (targetStatus === 'COMPLETED') {
-      updateData.status = 'COMPLETED';
-      updateData.endedAt = new Date();
-    } else if (targetStatus === 'CANCELLED') {
-      updateData.status = 'CANCELLED';
-      updateData.endedAt = new Date();
-    }
-
     const updated = await prisma.interviewSession.update({
       where: { id: sessionId },
-      data: updateData,
+      data: {
+        status: targetStatus,
+        endedAt: targetStatus === 'COMPLETED' || targetStatus === 'CANCELLED' ? new Date() : undefined,
+      },
     });
 
-    return NextResponse.json({ message: 'Session status updated', session: updated });
+    return NextResponse.json({ session: updated });
   } catch (error) {
     console.error('Error updating session status:', error);
-    return NextResponse.json({ error: 'Failed to update session status' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update session' }, { status: 500 });
   }
 }

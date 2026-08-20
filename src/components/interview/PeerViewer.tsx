@@ -213,7 +213,7 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
             <div className="flex items-center gap-2">
               <span className="flex h-2.5 w-2.5 rounded-full bg-warning animate-pulse" />
               <h1 className="text-sm font-bold text-foreground line-clamp-1">
-                Interviewer Observation: {session.candidate?.name || 'Candidate'}
+                Interviewer Observation: {session.candidate?.name || 'Waiting for candidate to join...'}
               </h1>
               <Badge variant="warning" className="text-[10px]">
                 Interviewer (Read Only)

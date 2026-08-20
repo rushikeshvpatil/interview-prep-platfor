@@ -100,8 +100,8 @@ export default function MockInterviewPage() {
   };
 
   // 1. Separate Candidate sessions vs Conducted sessions
-  const candidateSessions = sessions.filter((s) => s.userId === currentUserId || !s.interviewerId || s.interviewerId !== currentUserId);
-  const conductedSessions = sessions.filter((s) => s.interviewerId === currentUserId && s.userId !== currentUserId);
+  const candidateSessions = sessions.filter((s) => s.userId === currentUserId);
+  const conductedSessions = sessions.filter((s) => s.interviewerId === currentUserId);
 
   // 2. Filter Candidate sessions based on modeFilter
   const filteredCandidateSessions = candidateSessions.filter((s) => {

@@ -256,9 +256,12 @@ model TestCase {
 
 model InterviewSession {
   id              String        @id @default(cuid())
-  userId          String // Candidate User ID
+  userId          String? // Candidate User ID (assigned when candidate accepts invite)
   interviewerId   String? // Null for AI mode, Peer User ID for Peer mode
-  problemId       String? // Target problem for session
+  problemId       String? // Target problem for session (null if custom problem)
+  customTitle     String? // Custom problem title if configured by interviewer
+  customDescription String? // Custom problem description if configured by interviewer
+  customConstraints String? // Custom problem constraints if configured by interviewer
   mode            InterviewMode @default(AI)
   status          SessionStatus @default(SCHEDULED)
   stream          String        @default("DSA") // Future-proofed: DSA, BEHAVIORAL, SYSTEM_DESIGN, etc.
@@ -270,13 +273,14 @@ model InterviewSession {
   aiTranscript    Json?         // Structured conversation transcript [{ role, content, timestamp }]
   interviewerNotes String?      // Live private scratchpad notes for peer interviewer
 
-  candidate   User     @relation("CandidateSessions", fields: [userId], references: [id], onDelete: Cascade)
-  interviewer User?    @relation("InterviewerSessions", fields: [interviewerId], references: [id], onDelete: SetNull)
-  problem     Problem? @relation(fields: [problemId], references: [id], onDelete: SetNull)
+  candidate   User?     @relation("CandidateSessions", fields: [userId], references: [id], onDelete: Cascade)
+  interviewer User?     @relation("InterviewerSessions", fields: [interviewerId], references: [id], onDelete: SetNull)
+  problem     Problem?  @relation(fields: [problemId], references: [id], onDelete: SetNull)
 
   submissions SessionSubmission[]
   feedback    SessionFeedback[]
   codeDraft   SessionCodeDraft?
+  testCases   InterviewTestCase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -284,6 +288,20 @@ model InterviewSession {
   @@index([userId])
   @@index([interviewerId])
   @@index([status])
+}
+
+model InterviewTestCase {
+  id             String  @id @default(cuid())
+  sessionId      String
+  input          String
+  expectedOutput String
+  isHidden       Boolean @default(false)
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
 }
 
 model SessionSubmission {

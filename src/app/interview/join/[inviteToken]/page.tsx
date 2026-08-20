@@ -16,8 +16,12 @@ interface InviteSessionData {
   status: string;
   scheduledAt: string;
   durationMinutes: number;
-  candidate: { id: string; name?: string | null; email?: string | null; image?: string | null };
-  problem?: { id: string; title: string; difficulty: string; platform: string; summary?: string | null } | null;
+  candidate?: { id: string; name?: string | null; email?: string | null; image?: string | null } | null;
+  interviewer?: { id: string; name?: string | null; image?: string | null } | null;
+  problem?: { id: string; title: string; difficulty: string; platform: string; summary?: string | null; constraints?: string | null } | null;
+  customTitle?: string | null;
+  customDescription?: string | null;
+  customConstraints?: string | null;
   isAssigned: boolean;
 }
 
@@ -89,6 +93,9 @@ export default function JoinPeerInterviewPage({
     }
   };
 
+  const problemTitle = sessionData?.problem?.title || sessionData?.customTitle || 'General Algorithmic Session';
+  const problemDifficulty = sessionData?.problem?.difficulty || 'MEDIUM';
+
   return (
     <AppShell>
       <div className="mx-auto max-w-xl py-8 space-y-6">
@@ -100,7 +107,7 @@ export default function JoinPeerInterviewPage({
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Peer Mock Interview Invitation</h1>
           <p className="text-sm text-muted-foreground">
-            You have been invited to participate as an Interviewer for a 1-on-1 technical session.
+            You have been invited by your interviewer for a 1-on-1 technical coding interview.
           </p>
         </div>
 
@@ -119,48 +126,46 @@ export default function JoinPeerInterviewPage({
             <CardHeader className="border-b border-border bg-muted/20 pb-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Session Overview
+                  Interview Details
                 </span>
-                <Badge variant="warning">{sessionData.stream} Interview</Badge>
+                <Badge variant="warning">{sessionData.stream || 'DSA'} Interview</Badge>
               </div>
             </CardHeader>
             <CardContent className="p-6 space-y-5">
-              {/* Candidate Info */}
+              {/* Interviewer Info */}
               <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-3.5">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 font-bold text-primary text-sm">
-                  {sessionData.candidate.name?.charAt(0) || 'C'}
+                  {sessionData.interviewer?.name?.charAt(0) || 'I'}
                 </div>
                 <div>
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase">Candidate</span>
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase">Interviewer</span>
                   <h3 className="text-sm font-bold text-foreground">
-                    {sessionData.candidate.name || 'Anonymous Candidate'}
+                    {sessionData.interviewer?.name || 'Peer Interviewer'}
                   </h3>
                 </div>
               </div>
 
               {/* Problem Info */}
               <div className="rounded-xl border border-border bg-background p-3.5 space-y-1.5">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase">Problem Focus</span>
-                <h3 className="text-sm font-bold text-foreground">
-                  {sessionData.problem?.title || 'General Algorithmic Problem Solving'}
-                </h3>
-                {sessionData.problem && (
-                  <div className="flex items-center gap-2 pt-1">
-                    <Badge
-                      variant={
-                        sessionData.problem.difficulty === 'EASY'
-                          ? 'success'
-                          : sessionData.problem.difficulty === 'MEDIUM'
-                          ? 'warning'
-                          : 'destructive'
-                      }
-                      className="text-[10px]"
-                    >
-                      {sessionData.problem.difficulty}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">{sessionData.problem.platform}</span>
-                  </div>
-                )}
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase">Assigned Problem</span>
+                <h3 className="text-sm font-bold text-foreground">{problemTitle}</h3>
+                <div className="flex items-center gap-2 pt-1">
+                  <Badge
+                    variant={
+                      problemDifficulty === 'EASY'
+                        ? 'success'
+                        : problemDifficulty === 'MEDIUM'
+                        ? 'warning'
+                        : 'destructive'
+                    }
+                    className="text-[10px]"
+                  >
+                    {problemDifficulty}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {sessionData.problem?.platform || 'Custom Interview Problem'}
+                  </span>
+                </div>
               </div>
 
               {/* Duration & Scheduled Details */}
@@ -177,14 +182,13 @@ export default function JoinPeerInterviewPage({
                 </div>
               </div>
 
-              {/* Role explanation */}
+              {/* Candidate Experience explanation */}
               <div className="rounded-xl bg-muted/20 p-4 text-xs text-muted-foreground space-y-1.5">
-                <p className="font-semibold text-foreground">Your Role as Interviewer:</p>
+                <p className="font-semibold text-foreground">During the Interview:</p>
                 <ul className="list-disc pl-4 space-y-1 text-[11px]">
-                  <li>Observe the candidate write code live with a real-time read-only view.</li>
-                  <li>Watch test case executions and Judge0 compiler results in real time.</li>
-                  <li>Take private scratchpad notes during the session.</li>
-                  <li>Submit a structured 6-dimension evaluation scorecard at the end.</li>
+                  <li>Write code live in the Monaco Editor with real-time sync to your interviewer.</li>
+                  <li>Run code with Judge0 test executions and submit when ready.</li>
+                  <li>Receive a comprehensive 6-dimension evaluation scorecard after the session.</li>
                 </ul>
               </div>
 
@@ -196,7 +200,7 @@ export default function JoinPeerInterviewPage({
                     variant="primary"
                     className="w-full"
                   >
-                    Sign In to Join as Interviewer
+                    Sign In to Join Interview
                   </Button>
                 ) : (
                   <Button
@@ -205,7 +209,7 @@ export default function JoinPeerInterviewPage({
                     disabled={joining}
                     className="w-full shadow-xs"
                   >
-                    {joining ? 'Entering Room...' : 'Join Interview Room as Interviewer'}
+                    {joining ? 'Entering Room...' : 'Join Interview as Candidate'}
                   </Button>
                 )}
               </div>
