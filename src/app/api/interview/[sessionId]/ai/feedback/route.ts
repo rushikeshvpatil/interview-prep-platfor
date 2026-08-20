@@ -83,9 +83,26 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // If feedback already generated, return it
+    // If feedback already generated, format and return both feedback and scorecard
     if (interviewSession.feedback.length > 0) {
-      return NextResponse.json({ feedback: interviewSession.feedback[0] });
+      const existing = interviewSession.feedback[0];
+      let parsedNotes: { strengths?: string[]; improvements?: string[]; recommendedTopics?: string[]; summary?: string } = {};
+      try {
+        parsedNotes = typeof existing.notes === 'string' ? JSON.parse(existing.notes) : existing.notes;
+      } catch {
+        parsedNotes = { summary: existing.notes };
+      }
+
+      return NextResponse.json({
+        feedback: existing,
+        scorecard: {
+          rubricScores: existing.rubricScores,
+          strengths: parsedNotes.strengths || [],
+          improvements: parsedNotes.improvements || [],
+          recommendedTopics: parsedNotes.recommendedTopics || [],
+          summary: parsedNotes.summary || '',
+        },
+      });
     }
 
     const messages: ChatMessage[] = Array.isArray(interviewSession.aiTranscript)

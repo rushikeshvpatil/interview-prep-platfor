@@ -216,7 +216,10 @@ Output MUST be a valid JSON object matching this exact TypeScript structure:
 `;
 
     const result = await model.generateContent(scorecardPrompt);
-    const jsonText = result.response.text();
+    let jsonText = result.response.text().trim();
+    if (jsonText.startsWith('```')) {
+      jsonText = jsonText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    }
     const parsed = JSON.parse(jsonText) as ScorecardResult;
     return parsed;
   } catch (error) {

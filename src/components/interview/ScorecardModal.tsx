@@ -55,13 +55,31 @@ export function ScorecardModal({ sessionId, isOpen, onClose, problemTitle }: Sco
 
         if (postRes.ok && isMounted) {
           const postData = await postRes.json();
-          setScorecard(postData.scorecard);
+          if (postData.scorecard) {
+            setScorecard(postData.scorecard);
+          } else if (postData.feedback) {
+            const parsedNotes =
+              typeof postData.feedback.notes === 'string'
+                ? JSON.parse(postData.feedback.notes)
+                : postData.feedback.notes;
+
+            setScorecard({
+              rubricScores: postData.feedback.rubricScores,
+              strengths: parsedNotes.strengths || [],
+              improvements: parsedNotes.improvements || [],
+              recommendedTopics: parsedNotes.recommendedTopics || [],
+              summary: parsedNotes.summary || '',
+            });
+          } else {
+            throw new Error('Scorecard data is missing');
+          }
         } else {
-          throw new Error('Failed to generate scorecard');
+          const errData = await postRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to generate scorecard');
         }
       } catch (err) {
         console.error('Error in scorecard:', err);
-        if (isMounted) setError('Unable to load scorecard. Please try again.');
+        if (isMounted) setError(err instanceof Error ? err.message : 'Unable to load scorecard. Please try again.');
       } finally {
         if (isMounted) setLoading(false);
       }
