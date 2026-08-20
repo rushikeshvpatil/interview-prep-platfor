@@ -59,6 +59,16 @@ export default function InterviewSchedulePage() {
       .slice(0, 16);
   });
   const [durationMinutes, setDurationMinutes] = useState<number>(45);
+  const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
+
+  const handleCopyInvite = (sessionId: string, inviteToken?: string | null) => {
+    if (!inviteToken) return;
+    const inviteUrl = `${window.location.origin}/interview/join/${inviteToken}`;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setCopiedSessionId(sessionId);
+      setTimeout(() => setCopiedSessionId(null), 2500);
+    });
+  };
 
   // Fetch existing sessions and problems
   useEffect(() => {
@@ -446,14 +456,14 @@ export default function InterviewSchedulePage() {
                         {s.mode === 'PEER' && s.inviteToken && (
                           <button
                             type="button"
-                            onClick={() => {
-                              const inviteUrl = `${window.location.origin}/interview/join/${s.inviteToken}`;
-                              navigator.clipboard.writeText(inviteUrl);
-                              alert('Peer invite link copied to clipboard!');
-                            }}
-                            className="text-xs text-primary hover:underline cursor-pointer"
+                            onClick={() => handleCopyInvite(s.id, s.inviteToken)}
+                            className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                              copiedSessionId === s.id
+                                ? 'border-success bg-success/15 text-success'
+                                : 'border-border bg-background text-foreground hover:bg-muted'
+                            }`}
                           >
-                            Copy Invite
+                            {copiedSessionId === s.id ? '✓ Copied' : 'Copy Invite'}
                           </button>
                         )}
                       </div>
