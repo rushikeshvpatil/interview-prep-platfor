@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently -n \"app,ws\" -c \"cyan,magenta\" \"next dev\" \"tsx server/collaboration-server.ts\"",
+    "dev:app": "next dev",
+    "ws": "tsx server/collaboration-server.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -29,6 +31,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
+    "concurrently": "^10.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "prisma": "^6.4.1",

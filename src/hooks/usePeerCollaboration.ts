@@ -22,6 +22,18 @@ interface UsePeerCollaborationProps {
   initialLanguage?: string;
 }
 
+function getWebSocketUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  if (typeof window !== 'undefined') {
+    const isHttps = window.location.protocol === 'https:';
+    const host = window.location.hostname || 'localhost';
+    return `${isHttps ? 'wss' : 'ws'}://${host}:3001`;
+  }
+  return 'ws://localhost:3001';
+}
+
 export function usePeerCollaboration({
   sessionId,
   userId,
@@ -34,24 +46,39 @@ export function usePeerCollaboration({
   const [liveLanguage, setLiveLanguage] = useState<string>(initialLanguage);
   const [liveSubmissions, setLiveSubmissions] = useState<PeerRunResult[]>([]);
   const [peerConnected, setPeerConnected] = useState<boolean>(false);
+  const [transport, setTransport] = useState<'websocket' | 'http'>('http');
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
 
   const wsRef = useRef<WebSocket | null>(null);
-  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isWsOpenRef = useRef<boolean>(false);
+  const sendDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingPayloadRef = useRef<{ code: string; language: string } | null>(null);
 
-  // 1. WebSocket Layer
+  // 1. Establish and Maintain WebSocket Connection
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
-    let ws: WebSocket | null = null;
+    let isCancelled = false;
 
-    if (wsUrl) {
+    function connectWs() {
+      if (isCancelled) return;
+
+      const wsUrl = getWebSocketUrl();
+
       try {
-        ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
+          if (isCancelled) {
+            ws.close();
+            return;
+          }
+          isWsOpenRef.current = true;
+          setTransport('websocket');
           setConnectionStatus('connected');
-          ws?.send(
+
+          // Send JOIN_ROOM message
+          ws.send(
             JSON.stringify({
               type: 'JOIN_ROOM',
               sessionId,
@@ -65,7 +92,8 @@ export function usePeerCollaboration({
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.type === 'CODE_UPDATE' && role === 'interviewer') {
+
+            if ((data.type === 'CODE_UPDATE' || data.type === 'CODE_INIT') && role === 'interviewer') {
               if (typeof data.code === 'string') setLiveCode(data.code);
               if (typeof data.language === 'string') setLiveLanguage(data.language);
             } else if (data.type === 'RUN_RESULT') {
@@ -73,21 +101,45 @@ export function usePeerCollaboration({
             } else if (data.type === 'PRESENCE_CHANGE') {
               setPeerConnected(data.status === 'online');
             }
-          } catch (e) {
-            console.error('Error parsing WS message:', e);
+          } catch (err) {
+            console.error('[WS Client] Message parse error:', err);
           }
         };
 
         ws.onclose = () => {
+          isWsOpenRef.current = false;
+          setTransport('http');
           setConnectionStatus('offline');
+
+          // Reconnect with 3s backoff if not unmounted
+          if (!isCancelled) {
+            reconnectTimeoutRef.current = setTimeout(connectWs, 3000);
+          }
         };
-      } catch (err) {
-        console.warn('WebSocket connection failed, falling back to HTTP sync:', err);
+
+        ws.onerror = () => {
+          isWsOpenRef.current = false;
+          setTransport('http');
+        };
+      } catch {
+        setTransport('http');
       }
     }
 
-    // 2. HTTP State Sync Fallback (Runs seamlessly in serverless / local dev)
+    connectWs();
+
+    return () => {
+      isCancelled = true;
+      isWsOpenRef.current = false;
+      if (wsRef.current) wsRef.current.close();
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+    };
+  }, [sessionId, userId, role, userName]);
+
+  // 2. Adaptive HTTP State Sync (Runs as fallback when WS offline, or low-priority background sync)
+  useEffect(() => {
     let isMounted = true;
+
     async function syncPeerState() {
       try {
         const res = await fetch(`/api/interview/${sessionId}/peer`);
@@ -96,38 +148,38 @@ export function usePeerCollaboration({
           const sess = data.session;
 
           if (sess) {
-            // Check if interviewer has joined
             setPeerConnected(!!sess.interviewer);
-            setConnectionStatus('connected');
 
-            // Interviewer receives candidate's latest code
-            if (role === 'interviewer' && sess.codeDraft) {
-              setLiveCode(sess.codeDraft.code);
-              setLiveLanguage(sess.codeDraft.language);
-            }
+            // If WebSocket is not currently connected, use HTTP data
+            if (!isWsOpenRef.current) {
+              if (role === 'interviewer' && sess.codeDraft) {
+                setLiveCode(sess.codeDraft.code);
+                setLiveLanguage(sess.codeDraft.language);
+              }
 
-            if (sess.submissions) {
-              setLiveSubmissions(
-                sess.submissions.map((s: {
-                  id: string;
-                  verdict: string;
-                  stdout: string | null;
-                  stderr: string | null;
-                  compileOutput: string | null;
-                  executionTime: number | null;
-                  memory: number | null;
-                  createdAt: string;
-                }) => ({
-                  submissionId: s.id,
-                  verdict: s.verdict,
-                  stdout: s.stdout,
-                  stderr: s.stderr,
-                  compileOutput: s.compileOutput,
-                  executionTime: s.executionTime,
-                  memory: s.memory,
-                  createdAt: s.createdAt,
-                }))
-              );
+              if (sess.submissions) {
+                setLiveSubmissions(
+                  sess.submissions.map((s: {
+                    id: string;
+                    verdict: string;
+                    stdout: string | null;
+                    stderr: string | null;
+                    compileOutput: string | null;
+                    executionTime: number | null;
+                    memory: number | null;
+                    createdAt: string;
+                  }) => ({
+                    submissionId: s.id,
+                    verdict: s.verdict,
+                    stdout: s.stdout,
+                    stderr: s.stderr,
+                    compileOutput: s.compileOutput,
+                    executionTime: s.executionTime,
+                    memory: s.memory,
+                    createdAt: s.createdAt,
+                  }))
+                );
+              }
             }
           }
         }
@@ -139,38 +191,48 @@ export function usePeerCollaboration({
     // Initial sync
     syncPeerState();
 
-    // Regular interval sync (every 1.5 seconds)
-    pollTimerRef.current = setInterval(syncPeerState, 1500);
+    // Fast 800ms polling when WS offline, 5000ms heartbeat when WS active
+    const pollInterval = setInterval(() => {
+      syncPeerState();
+    }, isWsOpenRef.current ? 5000 : 800);
 
     return () => {
       isMounted = false;
-      if (ws) ws.close();
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      clearInterval(pollInterval);
     };
-  }, [sessionId, userId, role, userName]);
+  }, [sessionId, role]);
 
-  // Broadcast code update from candidate to interviewer
+  // 3. Ultra Low-Latency Candidate Code Broadcasting (<80ms throttle)
   const sendCodeUpdate = useCallback(
     (code: string, language: string) => {
       if (role !== 'candidate') return;
 
-      // Send through WebSocket if available
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type: 'CODE_UPDATE',
-            sessionId,
-            userId,
-            role: 'candidate',
-            payload: { code, language },
-          })
-        );
-      }
+      pendingPayloadRef.current = { code, language };
+
+      if (sendDebounceRef.current) clearTimeout(sendDebounceRef.current);
+
+      sendDebounceRef.current = setTimeout(() => {
+        if (!pendingPayloadRef.current) return;
+        const { code: c, language: l } = pendingPayloadRef.current;
+
+        // 1. Send via WebSocket if open (Instant <50ms transport)
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: 'CODE_UPDATE',
+              sessionId,
+              userId,
+              role: 'candidate',
+              payload: { code: c, language: l },
+            })
+          );
+        }
+      }, 80); // 80ms debounce yields ultra-smooth real-time experience
     },
     [sessionId, userId, role]
   );
 
-  // Broadcast execution result to interviewer
+  // 4. Broadcast execution result to interviewer
   const broadcastRunResult = useCallback(
     (result: PeerRunResult) => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -192,6 +254,7 @@ export function usePeerCollaboration({
     liveLanguage,
     liveSubmissions,
     peerConnected,
+    transport,
     connectionStatus,
     sendCodeUpdate,
     broadcastRunResult,

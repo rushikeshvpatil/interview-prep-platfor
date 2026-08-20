@@ -6,6 +6,13 @@ interface ClientConnection {
   userId: string;
   role: 'candidate' | 'interviewer' | 'observer';
   name?: string;
+  isAlive?: boolean;
+}
+
+interface CachedRoomState {
+  code: string;
+  language: string;
+  lastUpdated: string;
 }
 
 const PORT = parseInt(process.env.WS_PORT || '3001', 10);
@@ -13,8 +20,10 @@ const wss = new WebSocketServer({ port: PORT });
 
 // Map: sessionId -> Set of ClientConnection
 const rooms = new Map<string, Set<ClientConnection>>();
+// Map: sessionId -> Cached code state
+const roomCodeState = new Map<string, CachedRoomState>();
 
-console.log(`[WebSocket Server] Interview Collaboration Server running on ws://localhost:${PORT}`);
+console.log(`[WebSocket Server] Interview Collaboration Server running on port ${PORT}`);
 
 wss.on('connection', (ws: WebSocket) => {
   let clientInfo: ClientConnection | null = null;
@@ -34,6 +43,7 @@ wss.on('connection', (ws: WebSocket) => {
             userId,
             role: role || 'observer',
             name: name || 'Participant',
+            isAlive: true,
           };
 
           if (!rooms.has(sessionId)) {
@@ -43,7 +53,20 @@ wss.on('connection', (ws: WebSocket) => {
           const room = rooms.get(sessionId)!;
           room.add(clientInfo);
 
-          // Broadcast presence update
+          // If joining as interviewer and room already has cached candidate code, send it immediately
+          if (clientInfo.role === 'interviewer' && roomCodeState.has(sessionId)) {
+            const cached = roomCodeState.get(sessionId)!;
+            ws.send(
+              JSON.stringify({
+                type: 'CODE_INIT',
+                code: cached.code,
+                language: cached.language,
+                timestamp: cached.lastUpdated,
+              })
+            );
+          }
+
+          // Broadcast presence update to room
           broadcastToRoom(sessionId, {
             type: 'PRESENCE_CHANGE',
             userId,
@@ -66,16 +89,26 @@ wss.on('connection', (ws: WebSocket) => {
             return;
           }
 
-          // Broadcast to interviewers & observers
+          const newCode = typeof payload?.code === 'string' ? payload.code : '';
+          const newLang = typeof payload?.language === 'string' ? payload.language : 'python';
+
+          // Update in-memory room cache
+          roomCodeState.set(clientInfo.sessionId, {
+            code: newCode,
+            language: newLang,
+            lastUpdated: new Date().toISOString(),
+          });
+
+          // Broadcast to interviewers & observers immediately
           broadcastToRoom(
             clientInfo.sessionId,
             {
               type: 'CODE_UPDATE',
-              code: payload?.code,
-              language: payload?.language,
+              code: newCode,
+              language: newLang,
               timestamp: new Date().toISOString(),
             },
-            ws // Exclude sender
+            ws // Exclude candidate
           );
           break;
         }
@@ -92,7 +125,8 @@ wss.on('connection', (ws: WebSocket) => {
           break;
         }
 
-        case 'HEARTBEAT': {
+        case 'PING': {
+          if (clientInfo) clientInfo.isAlive = true;
           ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
           break;
         }
@@ -140,3 +174,18 @@ function broadcastToRoom(sessionId: string, messageObj: object, excludeWs?: WebS
     }
   }
 }
+
+// Keep-alive heartbeat interval
+const heartbeat = setInterval(() => {
+  for (const [, room] of rooms) {
+    for (const client of room) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.ping();
+      }
+    }
+  }
+}, 25000);
+
+wss.on('close', () => {
+  clearInterval(heartbeat);
+});

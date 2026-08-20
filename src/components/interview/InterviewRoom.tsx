@@ -230,7 +230,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
       saveDraft(newCode, language);
-    }, 2000);
+    }, 800);
   };
 
   const handleLanguageChange = (newLang: string) => {
