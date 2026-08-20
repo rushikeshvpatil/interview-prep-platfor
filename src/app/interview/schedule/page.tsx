@@ -24,6 +24,7 @@ interface ScheduledSession {
   scheduledAt: string;
   startedAt?: string | null;
   endedAt?: string | null;
+  inviteToken?: string | null;
   problem?: {
     id: string;
     title: string;
@@ -431,7 +432,7 @@ export default function InterviewSchedulePage() {
 
                   <div className="flex items-center justify-between border-t border-border pt-3">
                     {s.status !== 'COMPLETED' && s.status !== 'CANCELLED' ? (
-                      <>
+                      <div className="flex items-center gap-2">
                         <Link
                           href={`/interview/${s.id}`}
                           className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
@@ -441,15 +442,32 @@ export default function InterviewSchedulePage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
                           </svg>
                         </Link>
-                        <button
-                          onClick={() => handleCancelSession(s.id)}
-                          className="text-xs text-muted-foreground hover:text-destructive cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </>
+
+                        {s.mode === 'PEER' && s.inviteToken && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const inviteUrl = `${window.location.origin}/interview/join/${s.inviteToken}`;
+                              navigator.clipboard.writeText(inviteUrl);
+                              alert('Peer invite link copied to clipboard!');
+                            }}
+                            className="text-xs text-primary hover:underline cursor-pointer"
+                          >
+                            Copy Invite
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">Session {s.status.toLowerCase()}</span>
+                    )}
+
+                    {s.status !== 'COMPLETED' && s.status !== 'CANCELLED' && (
+                      <button
+                        onClick={() => handleCancelSession(s.id)}
+                        className="text-xs text-muted-foreground hover:text-destructive cursor-pointer"
+                      >
+                        Cancel
+                      </button>
                     )}
                   </div>
                 </div>

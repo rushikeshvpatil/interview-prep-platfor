@@ -261,12 +261,14 @@ model InterviewSession {
   problemId       String? // Target problem for session
   mode            InterviewMode @default(AI)
   status          SessionStatus @default(SCHEDULED)
+  stream          String        @default("DSA") // Future-proofed: DSA, BEHAVIORAL, SYSTEM_DESIGN, etc.
   durationMinutes Int           @default(45)
   scheduledAt     DateTime
   startedAt       DateTime?
   endedAt         DateTime?
   inviteToken     String?       @unique @default(cuid())
   aiTranscript    Json?         // Structured conversation transcript [{ role, content, timestamp }]
+  interviewerNotes String?      // Live private scratchpad notes for peer interviewer
 
   candidate   User     @relation("CandidateSessions", fields: [userId], references: [id], onDelete: Cascade)
   interviewer User?    @relation("InterviewerSessions", fields: [interviewerId], references: [id], onDelete: SetNull)
@@ -305,13 +307,14 @@ model SessionSubmission {
 }
 
 model SessionFeedback {
-  id           String         @id @default(cuid())
-  sessionId    String
-  source       FeedbackSource
-  authorId     String? // Null if AI, User ID if peer
-  rubricScores Json // { correctness: 8, complexity: 9, codeQuality: 8, communication: 7 }
-  notes        String // Detailed feedback markdown
-  createdAt    DateTime       @default(now())
+  id             String         @id @default(cuid())
+  sessionId      String
+  source         FeedbackSource
+  authorId       String?        // Null if AI, User ID if peer
+  rubricScores   Json           // { correctness: 8, complexity: 9, codeQuality: 8, communication: 7, overall: 8 }
+  notes          String         // Detailed feedback markdown & strengths/improvements
+  recommendation String?        // "STRONG_HIRE" | "HIRE" | "BORDERLINE" | "NO_HIRE"
+  createdAt      DateTime       @default(now())
 
   session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 

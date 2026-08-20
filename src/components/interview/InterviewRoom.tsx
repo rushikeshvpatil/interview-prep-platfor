@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { LANGUAGE_MAP, STARTER_TEMPLATES } from '@/lib/judge0';
 import { AIMessageFeed } from '@/components/interview/AIMessageFeed';
 import { ScorecardModal } from '@/components/interview/ScorecardModal';
+import { PeerViewer } from '@/components/interview/PeerViewer';
+import { PeerReviewModal } from '@/components/interview/PeerReviewModal';
+import { usePeerCollaboration } from '@/hooks/usePeerCollaboration';
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const Editor = dynamic(() => import('@monaco-editor/react'), {
@@ -27,11 +30,13 @@ export interface InterviewSessionData {
   userId: string;
   interviewerId?: string | null;
   mode: 'AI' | 'PEER';
+  stream?: string;
   status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   durationMinutes: number;
   scheduledAt: string;
   startedAt?: string | null;
   endedAt?: string | null;
+  inviteToken?: string | null;
   problem?: {
     id: string;
     title: string;
@@ -60,7 +65,7 @@ export interface InterviewSessionData {
   }[];
 }
 
-interface InterviewRoomProps {
+export interface InterviewRoomProps {
   initialSession: InterviewSessionData;
   currentUserId?: string;
 }
@@ -76,14 +81,26 @@ interface RunResult {
   memory: number | null;
 }
 
-export function InterviewRoom({ initialSession }: InterviewRoomProps) {
+export function InterviewRoom({ initialSession, currentUserId = '' }: InterviewRoomProps) {
+  const isInterviewer = currentUserId && initialSession.interviewerId === currentUserId && initialSession.mode === 'PEER';
+
+  if (isInterviewer) {
+    return <PeerViewer session={initialSession} currentUserId={currentUserId} />;
+  }
+
+  return <CandidateRoom initialSession={initialSession} currentUserId={currentUserId} />;
+}
+
+function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProps) {
   const [session, setSession] = useState<InterviewSessionData>(initialSession);
 
   // Left Panel Tabs
   const [leftTab, setLeftTab] = useState<'problem' | 'ai'>('problem');
   const [unreadAIMessages, setUnreadAIMessages] = useState<number>(0);
   const [showScorecard, setShowScorecard] = useState<boolean>(false);
+  const [showPeerReview, setShowPeerReview] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [copiedInvite, setCopiedInvite] = useState<boolean>(false);
 
   // Editor states
   const initialLang = session.codeDraft?.language || 'python';
@@ -101,6 +118,20 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
   const [activeOutputTab, setActiveOutputTab] = useState<'output' | 'stdin' | 'history'>('output');
   const [lastResult, setLastResult] = useState<RunResult | null>(null);
   const [submissions, setSubmissions] = useState(session.submissions || []);
+
+  // Real-time synchronization hook for candidate broadcasting to peer
+  const {
+    peerConnected,
+    sendCodeUpdate,
+    broadcastRunResult,
+  } = usePeerCollaboration({
+    sessionId: session.id,
+    userId: currentUserId || session.userId,
+    role: 'candidate',
+    userName: session.candidate?.name || 'Candidate',
+    initialCode: code,
+    initialLanguage: language,
+  });
 
   // Timer states
   const [timeLeftSec, setTimeLeftSec] = useState<number>(() => {
@@ -128,6 +159,8 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
         // Automatically open scorecard on completion for AI sessions
         if (session.mode === 'AI') {
           setShowScorecard(true);
+        } else if (session.mode === 'PEER') {
+          setShowPeerReview(true);
         }
       }
     } catch (err) {
@@ -189,10 +222,15 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
     setCode(newCode);
     if (session.status === 'COMPLETED') return;
 
+    // Real-time broadcast to peer interviewer
+    if (session.mode === 'PEER') {
+      sendCodeUpdate(newCode, language);
+    }
+
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
       saveDraft(newCode, language);
-    }, 2500);
+    }, 2000);
   };
 
   const handleLanguageChange = (newLang: string) => {
@@ -201,8 +239,10 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
     if (!code || code === STARTER_TEMPLATES[language]) {
       setCode(defaultTemplate);
       saveDraft(defaultTemplate, newLang);
+      if (session.mode === 'PEER') sendCodeUpdate(defaultTemplate, newLang);
     } else {
       saveDraft(code, newLang);
+      if (session.mode === 'PEER') sendCodeUpdate(code, newLang);
     }
   };
 
@@ -245,6 +285,20 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
         },
         ...prev,
       ]);
+
+      // Broadcast execution result to peer interviewer
+      if (session.mode === 'PEER') {
+        broadcastRunResult({
+          submissionId: result.submissionId,
+          verdict: result.verdict,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          compileOutput: result.compileOutput,
+          executionTime: result.executionTime,
+          memory: result.memory,
+          createdAt: new Date().toISOString(),
+        });
+      }
     } catch (err) {
       console.error('Run code error:', err);
       setLastResult({
@@ -271,6 +325,16 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
     }
   };
 
+  // 6. Copy Peer Invite Link
+  const handleCopyInviteLink = () => {
+    if (!session.inviteToken) return;
+    const inviteUrl = `${window.location.origin}/interview/join/${session.inviteToken}`;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setCopiedInvite(true);
+      setTimeout(() => setCopiedInvite(false), 2500);
+    });
+  };
+
   const getVerdictBadge = (verdict: string) => {
     switch (verdict) {
       case 'ACCEPTED':
@@ -292,12 +356,19 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
-      {/* Scorecard Modal */}
+      {/* AI Scorecard Modal */}
       <ScorecardModal
         sessionId={session.id}
         isOpen={showScorecard}
         onClose={() => setShowScorecard(false)}
         problemTitle={session.problem?.title}
+      />
+
+      {/* Peer Review Modal */}
+      <PeerReviewModal
+        sessionId={session.id}
+        isOpen={showPeerReview}
+        onClose={() => setShowPeerReview(false)}
       />
 
       {/* ============================================================
@@ -342,7 +413,7 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
           </div>
         </div>
 
-        {/* Center: Live Countdown Timer & Draft status */}
+        {/* Center: Live Countdown Timer & Peer Presence */}
         <div className="flex items-center gap-2">
           <div
             className={`flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-mono font-bold tracking-wider ${
@@ -357,6 +428,12 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
             <span>{isCompleted ? '00:00 (Ended)' : formatTimer(timeLeftSec)}</span>
           </div>
 
+          {session.mode === 'PEER' && (
+            <Badge variant={peerConnected ? 'success' : 'default'} className="text-[10px]">
+              {peerConnected ? '● Peer Connected' : '⏳ Waiting for Peer'}
+            </Badge>
+          )}
+
           <span className="hidden sm:inline-flex text-[11px] text-muted-foreground">
             {autosaveStatus === 'saving' ? (
               <span className="text-warning">Saving draft...</span>
@@ -368,9 +445,22 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
           </span>
         </div>
 
-        {/* Right: Focus Mode & End Session */}
+        {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          {/* Focus Mode Button */}
+          {session.mode === 'PEER' && session.inviteToken && (
+            <button
+              onClick={handleCopyInviteLink}
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer shadow-2xs"
+              title="Copy Invitation Link for Interviewer"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+              </svg>
+              <span>{copiedInvite ? '✓ Link Copied' : 'Invite Interviewer'}</span>
+            </button>
+          )}
+
+          {/* Focus Mode */}
           <button
             onClick={toggleFocusMode}
             className="hidden sm:inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
@@ -387,13 +477,14 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
           </button>
 
           {isCompleted && session.mode === 'AI' && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setShowScorecard(true)}
-              className="text-xs"
-            >
+            <Button variant="primary" size="sm" onClick={() => setShowScorecard(true)} className="text-xs">
               View Scorecard
+            </Button>
+          )}
+
+          {isCompleted && session.mode === 'PEER' && (
+            <Button variant="primary" size="sm" onClick={() => setShowPeerReview(true)} className="text-xs">
+              View Peer Review
             </Button>
           )}
 
@@ -433,24 +524,24 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
                 Problem Details
               </button>
 
-              <button
-                onClick={() => setLeftTab('ai')}
-                className={`relative px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  leftTab === 'ai'
-                    ? 'bg-background text-foreground shadow-2xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <span>AI Interviewer</span>
-                {session.mode === 'AI' && (
+              {session.mode === 'AI' && (
+                <button
+                  onClick={() => setLeftTab('ai')}
+                  className={`relative px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    leftTab === 'ai'
+                      ? 'bg-background text-foreground shadow-2xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <span>AI Interviewer</span>
                   <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
-                )}
-                {unreadAIMessages > 0 && leftTab !== 'ai' && (
-                  <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
-                    {unreadAIMessages}
-                  </span>
-                )}
-              </button>
+                  {unreadAIMessages > 0 && leftTab !== 'ai' && (
+                    <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                      {unreadAIMessages}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
 
             {session.problem?.externalUrl && leftTab === 'problem' && (
@@ -470,8 +561,25 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
 
           {/* Left Panel Tab Content */}
           <div className="flex-1 overflow-y-auto">
-            {leftTab === 'problem' ? (
+            {leftTab === 'problem' || session.mode === 'PEER' ? (
               <div className="p-5 space-y-5">
+                {/* Peer Interviewer banner */}
+                {session.mode === 'PEER' && (
+                  <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-warning flex items-center gap-1.5">
+                        <span>👥</span> Peer Interview Mode
+                      </span>
+                      <Badge variant={peerConnected ? 'success' : 'default'} className="text-[10px]">
+                        {peerConnected ? 'Interviewer Connected' : 'Waiting for Interviewer'}
+                      </Badge>
+                    </div>
+                    <p className="text-muted-foreground leading-relaxed text-[11px]">
+                      Your code and test case executions are streamed in real time to your interviewer. When you are finished, click <strong>End Interview</strong>.
+                    </p>
+                  </div>
+                )}
+
                 {/* Problem Title & Meta */}
                 <div>
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -487,7 +595,7 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</h3>
                   <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
                     {session.problem?.summary ||
-                      'Implement your algorithmic solution in the code editor, explain your thought process to the AI interviewer, and test your code against the Judge0 sandbox.'}
+                      'Implement your algorithmic solution in the code editor, explain your thought process, and test your code against the Judge0 sandbox.'}
                   </p>
                 </div>
 
@@ -520,16 +628,6 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
                     ))}
                   </div>
                 )}
-
-                {/* Interviewer Callout */}
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2 text-xs">
-                  <p className="font-semibold text-foreground flex items-center gap-1.5">
-                    <span>💬</span> Need to explain your approach or ask for a hint?
-                  </p>
-                  <p className="text-muted-foreground">
-                    Switch to the <strong>AI Interviewer</strong> tab above to discuss your strategy, analyze Big-O complexity, or ask questions!
-                  </p>
-                </div>
               </div>
             ) : (
               <AIMessageFeed
@@ -562,6 +660,11 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
                 {session.mode === 'AI' && (
                   <Button variant="primary" size="sm" onClick={() => setShowScorecard(true)}>
                     View AI Scorecard
+                  </Button>
+                )}
+                {session.mode === 'PEER' && (
+                  <Button variant="primary" size="sm" onClick={() => setShowPeerReview(true)}>
+                    View Peer Review
                   </Button>
                 )}
                 <Link href="/interview/schedule">
@@ -657,11 +760,8 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
             />
           </div>
 
-          {/* ============================================================
-              BOTTOM EXECUTION / SUBMISSIONS OUTPUT DRAWER
-              ============================================================ */}
+          {/* Submissions Drawer */}
           <div className="h-56 shrink-0 border-t border-border bg-card flex flex-col">
-            {/* Output Drawer Tabs */}
             <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-muted/20 px-3">
               <div className="flex items-center gap-1">
                 <button
@@ -713,7 +813,6 @@ export function InterviewRoom({ initialSession }: InterviewRoomProps) {
               )}
             </div>
 
-            {/* Output Drawer Content Area */}
             <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
               {activeOutputTab === 'output' && (
                 <div className="space-y-2">
