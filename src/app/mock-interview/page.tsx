@@ -12,6 +12,8 @@ import { PeerReviewModal } from '@/components/interview/PeerReviewModal';
 
 interface SessionRecord {
   id: string;
+  userId: string;
+  interviewerId?: string | null;
   mode: 'AI' | 'PEER';
   status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   durationMinutes: number;
@@ -49,9 +51,12 @@ interface SessionRecord {
 }
 
 export default function MockInterviewPage() {
-  const { status: authStatus } = useSession();
+  const { data: sessionData, status: authStatus } = useSession();
+  const currentUserId = sessionData?.user?.id;
+
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeView, setActiveView] = useState<'CANDIDATE' | 'CONDUCTED'>('CANDIDATE');
   const [modeFilter, setModeFilter] = useState<'ALL' | 'AI' | 'PEER'>('ALL');
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
 
@@ -69,7 +74,6 @@ export default function MockInterviewPage() {
         const res = await fetch('/api/interview/schedule');
         if (res.ok && isMounted) {
           const data = await res.json();
-          // Load all sessions (AI and PEER)
           setSessions(data.sessions || []);
         }
       } catch (err) {
@@ -95,14 +99,19 @@ export default function MockInterviewPage() {
     });
   };
 
-  // Filter sessions based on modeFilter
-  const filteredSessions = sessions.filter((s) => {
+  // 1. Separate Candidate sessions vs Conducted sessions
+  const candidateSessions = sessions.filter((s) => s.userId === currentUserId || !s.interviewerId || s.interviewerId !== currentUserId);
+  const conductedSessions = sessions.filter((s) => s.interviewerId === currentUserId && s.userId !== currentUserId);
+
+  // 2. Filter Candidate sessions based on modeFilter
+  const filteredCandidateSessions = candidateSessions.filter((s) => {
     if (modeFilter === 'AI') return s.mode === 'AI';
     if (modeFilter === 'PEER') return s.mode === 'PEER';
     return true;
   });
 
-  const completedCount = filteredSessions.filter((s) => s.status === 'COMPLETED').length;
+  const displayedSessions = activeView === 'CANDIDATE' ? filteredCandidateSessions : conductedSessions;
+  const completedCount = displayedSessions.filter((s) => s.status === 'COMPLETED').length;
 
   return (
     <AppShell>
@@ -192,65 +201,107 @@ export default function MockInterviewPage() {
           </Card>
         </div>
 
-        {/* Unified Interview History Section */}
+        {/* Primary View Switcher: My Interviews vs Interviews Conducted */}
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <button
+            onClick={() => setActiveView('CANDIDATE')}
+            className={`text-sm font-bold pb-1 transition-colors cursor-pointer border-b-2 ${
+              activeView === 'CANDIDATE'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Your Interview History ({candidateSessions.length})
+          </button>
+
+          {conductedSessions.length > 0 && (
+            <button
+              onClick={() => setActiveView('CONDUCTED')}
+              className={`text-sm font-bold pb-1 transition-colors cursor-pointer border-b-2 ml-4 ${
+                activeView === 'CONDUCTED'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Interviews Conducted ({conductedSessions.length})
+            </button>
+          )}
+        </div>
+
+        {/* History Listing */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Your Interview History</h2>
+              <h2 className="text-lg font-semibold text-foreground">
+                {activeView === 'CANDIDATE' ? 'Your Interview History' : 'Interviews Conducted by You'}
+              </h2>
               <p className="text-xs text-muted-foreground">
                 Completed: {completedCount} {completedCount === 1 ? 'session' : 'sessions'}
               </p>
             </div>
 
-            {/* Mode Filter Tabs */}
-            <div className="flex items-center rounded-lg border border-border bg-card p-1 text-xs">
-              {(['ALL', 'AI', 'PEER'] as const).map((tab) => {
-                const label = tab === 'ALL' ? 'All' : tab === 'AI' ? 'AI Mock' : 'Peer';
-                const count = sessions.filter((s) => (tab === 'ALL' ? true : s.mode === tab)).length;
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setModeFilter(tab)}
-                    className={`rounded-md px-3 py-1 font-medium transition-colors cursor-pointer ${
-                      modeFilter === tab
-                        ? 'bg-primary text-primary-foreground shadow-2xs'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {label} ({count})
-                  </button>
-                );
-              })}
-            </div>
+            {/* Mode Filter Tabs (for Candidate view) */}
+            {activeView === 'CANDIDATE' && (
+              <div className="flex items-center rounded-lg border border-border bg-card p-1 text-xs">
+                {(['ALL', 'AI', 'PEER'] as const).map((tab) => {
+                  const label = tab === 'ALL' ? 'All' : tab === 'AI' ? 'AI Mock' : 'Peer';
+                  const count = candidateSessions.filter((s) => (tab === 'ALL' ? true : s.mode === tab)).length;
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setModeFilter(tab)}
+                      className={`rounded-md px-3 py-1 font-medium transition-colors cursor-pointer ${
+                        modeFilter === tab
+                          ? 'bg-primary text-primary-foreground shadow-2xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {loading ? (
             <div className="flex justify-center py-12">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : filteredSessions.length === 0 ? (
+          ) : displayedSessions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center space-y-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto">
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                 </svg>
               </div>
-              <h3 className="text-base font-semibold text-foreground">No {modeFilter !== 'ALL' ? modeFilter : ''} Interview Sessions Found</h3>
+              <h3 className="text-base font-semibold text-foreground">
+                {activeView === 'CANDIDATE'
+                  ? `No ${modeFilter !== 'ALL' ? modeFilter : ''} Interview Sessions Found`
+                  : 'No Conducted Interviews Yet'}
+              </h3>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                Schedule a mock interview to practice technical problem solving under real interview conditions.
+                {activeView === 'CANDIDATE'
+                  ? 'Schedule a mock interview to practice technical problem solving under real interview conditions.'
+                  : 'When peers share an interview invite link with you, your conducted evaluation reviews will appear here.'}
               </p>
-              <Link href="/interview/schedule" className="inline-block pt-2">
-                <Button variant="primary" size="sm">
-                  Schedule First Session
-                </Button>
-              </Link>
+              {activeView === 'CANDIDATE' && (
+                <Link href="/interview/schedule" className="inline-block pt-2">
+                  <Button variant="primary" size="sm">
+                    Schedule First Session
+                  </Button>
+                </Link>
+              )}
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredSessions.map((s) => {
+              {displayedSessions.map((s) => {
                 const isComp = s.status === 'COMPLETED';
                 const isPeer = s.mode === 'PEER';
                 const isCopied = copiedInviteId === s.id;
+
+                // Extract feedback score if available
+                const overallScore = s.feedback?.[0]?.rubricScores?.overall;
 
                 return (
                   <div
@@ -298,16 +349,30 @@ export default function MockInterviewPage() {
                         )}
                       </div>
 
-                      <div className="text-xs text-muted-foreground pt-1 space-y-0.5">
+                      <div className="text-xs text-muted-foreground pt-1 space-y-1">
                         <p>📅 {new Date(s.scheduledAt).toLocaleDateString()}</p>
                         <p>⏱️ Duration: {s.durationMinutes} mins</p>
-                        {isPeer && (
+
+                        {/* Candidate/Interviewer Identity Details */}
+                        {activeView === 'CONDUCTED' ? (
+                          <p className="pt-0.5 text-[11px] font-medium text-foreground">
+                            Candidate: <span className="text-primary font-semibold">{s.candidate?.name || 'Candidate'}</span>
+                          </p>
+                        ) : isPeer ? (
                           <p className="pt-0.5 text-[11px]">
-                            {s.interviewer ? (
-                              <span className="text-success font-medium">● Peer Connected</span>
+                            Interviewer:{' '}
+                            {s.interviewer?.name ? (
+                              <span className="text-foreground font-semibold">{s.interviewer.name}</span>
                             ) : (
-                              <span className="text-warning font-medium">○ Waiting for Peer</span>
+                              <span className="text-warning font-medium">Waiting for interviewer</span>
                             )}
+                          </p>
+                        ) : null}
+
+                        {/* Overall score indicator if completed */}
+                        {isComp && overallScore !== undefined && (
+                          <p className="pt-0.5 text-[11px] font-semibold text-success">
+                            Overall Score: {overallScore}/10
                           </p>
                         )}
                       </div>

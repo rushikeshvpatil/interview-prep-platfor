@@ -123,6 +123,26 @@ export function PeerReviewModal({ sessionId, isOpen, onClose }: PeerReviewModalP
             </div>
           ) : feedback ? (
             <>
+              {/* Interview Details Header */}
+              <div className="rounded-xl border border-border bg-background p-4 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-muted-foreground text-[10px] uppercase font-semibold block">Candidate</span>
+                  <p className="font-semibold text-foreground">{feedback.session.candidate?.name || 'Candidate'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-[10px] uppercase font-semibold block">Interviewer</span>
+                  <p className="font-semibold text-foreground">{feedback.session.interviewer?.name || 'Peer Interviewer'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-[10px] uppercase font-semibold block">Problem</span>
+                  <p className="font-semibold text-foreground">{feedback.session.problem?.title || 'General Algorithmic Session'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-[10px] uppercase font-semibold block">Date Reviewed</span>
+                  <p className="text-muted-foreground">{new Date(feedback.createdAt).toLocaleDateString()}</p>
+                </div>
+              </div>
+
               {/* Overall Outcome Banner */}
               <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 p-4">
                 <div>

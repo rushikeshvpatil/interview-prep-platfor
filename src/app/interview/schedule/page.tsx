@@ -8,6 +8,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { InviteModal } from '@/components/interview/InviteModal';
 
 interface ProblemOption {
   id: string;
@@ -60,6 +61,7 @@ export default function InterviewSchedulePage() {
   });
   const [durationMinutes, setDurationMinutes] = useState<number>(45);
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
+  const [inviteModalSession, setInviteModalSession] = useState<ScheduledSession | null>(null);
 
   const handleCopyInvite = (sessionId: string, inviteToken?: string | null) => {
     if (!inviteToken) return;
@@ -127,10 +129,15 @@ export default function InterviewSchedulePage() {
       // Refresh list
       setSessions((prev) => [data.session, ...prev]);
 
-      // Redirect directly to the room
-      setTimeout(() => {
-        router.push(`/interview/${data.session.id}`);
-      }, 800);
+      // If Peer mode, immediately open the Invite Modal to copy before entering
+      if (mode === 'PEER') {
+        setInviteModalSession(data.session);
+      } else {
+        // AI mode goes directly to room
+        setTimeout(() => {
+          router.push(`/interview/${data.session.id}`);
+        }, 800);
+      }
     } catch (err) {
       console.error('Error scheduling session:', err);
       setErrorMessage(err instanceof Error ? err.message : 'Failed to schedule session');
@@ -186,6 +193,13 @@ export default function InterviewSchedulePage() {
 
   return (
     <AppShell>
+      {/* Invite Modal for Peer Sessions */}
+      <InviteModal
+        isOpen={!!inviteModalSession}
+        onClose={() => setInviteModalSession(null)}
+        session={inviteModalSession}
+      />
+
       <div className="mx-auto max-w-5xl space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

@@ -28,6 +28,9 @@ export async function GET() {
           interviewer: {
             select: { id: true, name: true, image: true },
           },
+          feedback: {
+            select: { id: true, source: true, recommendation: true, rubricScores: true, createdAt: true },
+          },
           _count: {
             select: { submissions: true },
           },
