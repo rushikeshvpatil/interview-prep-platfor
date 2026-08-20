@@ -266,6 +266,7 @@ model InterviewSession {
   startedAt       DateTime?
   endedAt         DateTime?
   inviteToken     String?       @unique @default(cuid())
+  aiTranscript    Json?         // Structured conversation transcript [{ role, content, timestamp }]
 
   candidate   User     @relation("CandidateSessions", fields: [userId], references: [id], onDelete: Cascade)
   interviewer User?    @relation("InterviewerSessions", fields: [interviewerId], references: [id], onDelete: SetNull)

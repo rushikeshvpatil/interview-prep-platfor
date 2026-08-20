@@ -4,18 +4,17 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 
 ## Current Status
 
-**Phase 6 — Scheduled Interview Sessions & Gated Monaco / Judge0 Engine** ✅
+**Phase 7 — AI Mock Interviewer Engine (Google Gemini)** ✅
 
 - Next.js 16 with App Router, TypeScript, and Tailwind CSS v4
 - Auth.js v5 with Google & GitHub OAuth providers
 - Neon PostgreSQL database with 54 curated real coding problems across 5 platforms (LeetCode, CSES, Codeforces, HackerRank, AtCoder)
-- Database-backed search with title, platform, and topic matching
-- Combinable filters: Difficulty (Easy/Medium/Hard), Platform, dynamic Topics, Companies, and User Status (Solved/Attempted/Unsolved)
-- Candidate Profile & Interview Preferences: Experience level, target role, target companies, primary focus, preferred difficulty, and target interview countdown
-- **Scheduled Interview Sessions (`/interview/schedule`)**: Create AI and Peer interview sessions with custom durations (30m, 45m, 60m)
-- **Gated Monaco Editor (`/interview/[sessionId]`)**: In-browser code editor strictly restricted to authorized interview participants
-- **Self-Hosted Judge0 CE Engine (`judge0/`)**: Docker Compose infrastructure for AWS EC2/VPS with cgroups sandboxing, multi-language support (Python, JS, TS, C++, Java), and server-side execution pipeline
-- **Code Draft Persistence**: Periodic autosave storing candidate code drafts in PostgreSQL with real-time countdown timer
+- Combinable filters: Difficulty, Platform, dynamic Topics, Companies, and User Status (Solved/Attempted/Unsolved)
+- Candidate Profile & Preferences: Experience level, target role, target companies, primary focus, and interview countdown
+- **Scheduled Interview Sessions (`/interview/schedule`)**: AI and Peer interview rooms with custom durations (30m, 45m, 60m)
+- **Gated Monaco Editor (`/interview/[sessionId]`)**: In-browser code editor with Judge0 execution engine and server-authoritative timer
+- **AI Mock Interviewer Hub (`/mock-interview`)**: Conversational technical interview dialogues powered by Google Gemini (approach analysis, Big-O complexity questions, progressive hints, and edge case exploration)
+- **Automated Scorecards**: 6-dimension rubric evaluation (Correctness, Problem Solving, Complexity, Code Quality, Communication, Overall /10) with strengths, growth areas, and revision recommendations
 
 ## Tech Stack
 
@@ -28,9 +27,9 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 | Auth | Auth.js v5 (NextAuth) |
 | ORM | Prisma 6 |
 | Database | PostgreSQL (Neon) |
-| Code Execution | Self-Hosted Judge0 CE (AWS EC2 Docker Stack) |
-| AI | Google Gemini API (planned for Phase 7) |
-| Deployment | Vercel (App) + AWS EC2 (Judge0) |
+| Code Execution | Self-Hosted Judge0 CE (AWS EC2 / VPS Docker Stack) |
+| AI | Google Gemini API (1.5 Flash) |
+| Deployment | Vercel (App) + Cloud VM (Judge0) |
 
 ## Roadmap
 
@@ -40,7 +39,7 @@ A full-stack, AI-powered interview preparation platform built as a portfolio pro
 - [x] Phase 4: Coding problems catalog, search & filters
 - [x] Phase 5: Candidate profile & interview preferences
 - [x] Phase 6: Scheduled interview sessions & gated Monaco / Judge0 engine
-- [ ] Phase 7: AI mock interviewer engine (Google Gemini)
+- [x] Phase 7: AI mock interviewer engine (Google Gemini)
 - [ ] Phase 8: Peer interview mode & collaborative review
 - [ ] Phase 9: Behavioral interview preparation (STAR method)
 - [ ] Phase 10: Dashboard, progress analytics & spaced revision hub
@@ -66,7 +65,7 @@ npm install
 
 # Copy environment variables
 cp .env.example .env
-# Fill in your environment variables in .env (Database URL, Auth secret, OAuth credentials)
+# Fill in your environment variables in .env (Database URL, Auth secret, OAuth credentials, Gemini API key)
 
 # Generate Prisma Client & apply migrations
 npx prisma generate
