@@ -20,7 +20,16 @@ export async function GET() {
         orderBy: { scheduledAt: 'desc' },
         include: {
           problem: {
-            select: { id: true, title: true, difficulty: true, platform: true, summary: true, constraints: true },
+            select: {
+              id: true,
+              title: true,
+              difficulty: true,
+              platform: true,
+              externalUrl: true,
+              summary: true,
+              constraints: true,
+              topics: { include: { topic: true } },
+            },
           },
           candidate: {
             select: { id: true, name: true, image: true },
@@ -40,9 +49,19 @@ export async function GET() {
         },
       }),
       prisma.problem.findMany({
-        take: 50,
+        take: 100,
         orderBy: { title: 'asc' },
-        select: { id: true, title: true, difficulty: true, platform: true, summary: true, constraints: true },
+        select: {
+          id: true,
+          title: true,
+          difficulty: true,
+          platform: true,
+          externalUrl: true,
+          summary: true,
+          constraints: true,
+          topics: { include: { topic: true } },
+          testCases: { select: { id: true, input: true, expectedOutput: true, isHidden: true } },
+        },
       }),
     ]);
 
@@ -104,14 +123,28 @@ export async function POST(request: NextRequest) {
       ? Number(durationMinutes)
       : 45;
 
-    // Verify catalog problem if provided
+    const isPeer = modeVal === InterviewMode.PEER;
+    const isCustom = isPeer && Boolean(customTitle && customTitle.trim());
+
+    // Verify or find catalog problem
     let verifiedProblemId: string | null = null;
-    if (problemId) {
-      const p = await prisma.problem.findUnique({
-        where: { id: problemId },
-        select: { id: true },
-      });
-      if (p) verifiedProblemId = p.id;
+    if (!isCustom) {
+      if (problemId) {
+        const p = await prisma.problem.findUnique({
+          where: { id: problemId },
+          include: { testCases: true },
+        });
+        if (p) verifiedProblemId = p.id;
+      }
+
+      // Fallback: pick the first problem if none was explicitly passed
+      if (!verifiedProblemId) {
+        const firstP = await prisma.problem.findFirst({
+          orderBy: { title: 'asc' },
+          select: { id: true },
+        });
+        if (firstP) verifiedProblemId = firstP.id;
+      }
     }
 
     // Validate test cases array if provided
@@ -119,10 +152,29 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(testCases)) {
       for (const tc of testCases) {
         if (typeof tc.input === 'string' && typeof tc.expectedOutput === 'string') {
+          if (tc.input.trim() || tc.expectedOutput.trim()) {
+            validTestCases.push({
+              input: tc.input.trim(),
+              expectedOutput: tc.expectedOutput.trim(),
+              isHidden: Boolean(tc.isHidden),
+            });
+          }
+        }
+      }
+    }
+
+    // If catalog problem selected and no test cases manually provided, copy public test cases from problem
+    if (validTestCases.length === 0 && verifiedProblemId) {
+      const problemRecord = await prisma.problem.findUnique({
+        where: { id: verifiedProblemId },
+        include: { testCases: true },
+      });
+      if (problemRecord?.testCases && problemRecord.testCases.length > 0) {
+        for (const tc of problemRecord.testCases) {
           validTestCases.push({
-            input: tc.input.trim(),
-            expectedOutput: tc.expectedOutput.trim(),
-            isHidden: Boolean(tc.isHidden),
+            input: tc.input,
+            expectedOutput: tc.expectedOutput,
+            isHidden: tc.isHidden,
           });
         }
       }
@@ -131,17 +183,15 @@ export async function POST(request: NextRequest) {
     // OWNERSHIP MODEL:
     // For PEER interviews: interviewerId = current authenticated user, userId = null (pending candidate invite acceptance)
     // For AI interviews: userId = current authenticated user, interviewerId = null
-    const isPeer = modeVal === InterviewMode.PEER;
-
     const newSession = await prisma.interviewSession.create({
       data: {
         userId: isPeer ? null : userId,
         interviewerId: isPeer ? userId : null,
         mode: modeVal,
         problemId: verifiedProblemId,
-        customTitle: isPeer ? (customTitle?.trim() || null) : null,
-        customDescription: isPeer ? (customDescription?.trim() || null) : null,
-        customConstraints: isPeer ? (customConstraints?.trim() || null) : null,
+        customTitle: isCustom ? customTitle.trim() : null,
+        customDescription: isCustom ? (customDescription?.trim() || null) : null,
+        customConstraints: isCustom ? (customConstraints?.trim() || null) : null,
         scheduledAt: scheduledDate,
         durationMinutes: validDuration,
         status: 'SCHEDULED',
@@ -155,9 +205,21 @@ export async function POST(request: NextRequest) {
       },
       include: {
         problem: {
-          select: { id: true, title: true, difficulty: true, platform: true },
+          select: {
+            id: true,
+            title: true,
+            difficulty: true,
+            platform: true,
+            externalUrl: true,
+            summary: true,
+            constraints: true,
+            topics: { include: { topic: true } },
+          },
         },
         interviewer: {
+          select: { id: true, name: true, image: true },
+        },
+        candidate: {
           select: { id: true, name: true, image: true },
         },
         testCases: true,

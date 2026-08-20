@@ -170,9 +170,11 @@ export default function InterviewSchedulePage() {
       const isPeer = mode === 'PEER';
       const isCustom = isPeer && problemSource === 'CUSTOM';
 
+      const selectedProblemId = !isCustom ? (problemId || (problems.length > 0 ? problems[0].id : null)) : null;
+
       const payload = {
         mode,
-        problemId: !isCustom && problemId ? problemId : null,
+        problemId: selectedProblemId,
         customTitle: isCustom ? customTitle : null,
         customDescription: isCustom ? customDescription : null,
         customConstraints: isCustom ? customConstraints : null,

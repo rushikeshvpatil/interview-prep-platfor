@@ -13,6 +13,16 @@ export interface PeerRunResult {
   createdAt: string;
 }
 
+export interface ChatMessageItem {
+  id: string;
+  sessionId: string;
+  senderId: string;
+  senderRole: 'INTERVIEWER' | 'CANDIDATE';
+  senderName?: string | null;
+  message: string;
+  createdAt: string;
+}
+
 interface UsePeerCollaborationProps {
   sessionId: string;
   userId: string;
@@ -45,6 +55,7 @@ export function usePeerCollaboration({
   const [liveCode, setLiveCode] = useState<string>(initialCode);
   const [liveLanguage, setLiveLanguage] = useState<string>(initialLanguage);
   const [liveSubmissions, setLiveSubmissions] = useState<PeerRunResult[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
   const [peerConnected, setPeerConnected] = useState<boolean>(false);
   const [transport, setTransport] = useState<'websocket' | 'http'>('http');
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
@@ -54,6 +65,44 @@ export function usePeerCollaboration({
   const isWsOpenRef = useRef<boolean>(false);
   const sendDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const pendingPayloadRef = useRef<{ code: string; language: string } | null>(null);
+
+  // Load chat messages history from database
+  const loadChatHistory = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/interview/${sessionId}/messages`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.messages)) {
+          setChatMessages(data.messages);
+        }
+      }
+    } catch (err) {
+      console.error('[Chat] Failed to load chat history:', err);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function initChat() {
+      if (!sessionId) return;
+      try {
+        const res = await fetch(`/api/interview/${sessionId}/messages`);
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (Array.isArray(data.messages)) {
+            setChatMessages(data.messages);
+          }
+        }
+      } catch (err) {
+        console.error('[Chat] Failed to load chat history:', err);
+      }
+    }
+    initChat();
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId]);
 
   // 1. Establish and Maintain WebSocket Connection
   useEffect(() => {
@@ -77,7 +126,7 @@ export function usePeerCollaboration({
           setTransport('websocket');
           setConnectionStatus('connected');
 
-          // Send JOIN_ROOM message
+          // Send JOIN_ROOM message with initialCode payload for instant synchronization
           ws.send(
             JSON.stringify({
               type: 'JOIN_ROOM',
@@ -85,6 +134,10 @@ export function usePeerCollaboration({
               userId,
               role,
               name: userName || 'Participant',
+              payload: {
+                initialCode,
+                initialLanguage,
+              },
             })
           );
         };
@@ -98,6 +151,13 @@ export function usePeerCollaboration({
               if (typeof data.language === 'string') setLiveLanguage(data.language);
             } else if (data.type === 'RUN_RESULT') {
               setLiveSubmissions((prev) => [data.result, ...prev]);
+            } else if (data.type === 'CHAT_MESSAGE') {
+              if (data.message && data.message.id) {
+                setChatMessages((prev) => {
+                  if (prev.some((m) => m.id === data.message.id)) return prev;
+                  return [...prev, data.message];
+                });
+              }
             } else if (data.type === 'PRESENCE_CHANGE') {
               setPeerConnected(data.status === 'online');
             }
@@ -121,8 +181,12 @@ export function usePeerCollaboration({
           isWsOpenRef.current = false;
           setTransport('http');
         };
-      } catch {
+      } catch (e) {
+        console.error('[WS] Connection attempt error:', e);
         setTransport('http');
+        if (!isCancelled) {
+          reconnectTimeoutRef.current = setTimeout(connectWs, 3000);
+        }
       }
     }
 
@@ -130,133 +194,146 @@ export function usePeerCollaboration({
 
     return () => {
       isCancelled = true;
-      isWsOpenRef.current = false;
-      if (wsRef.current) wsRef.current.close();
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-    };
-  }, [sessionId, userId, role, userName]);
-
-  // 2. Adaptive HTTP State Sync (Runs as fallback when WS offline, or low-priority background sync)
-  useEffect(() => {
-    let isMounted = true;
-
-    async function syncPeerState() {
-      try {
-        const res = await fetch(`/api/interview/${sessionId}/peer`);
-        if (res.ok && isMounted) {
-          const data = await res.json();
-          const sess = data.session;
-
-          if (sess) {
-            setPeerConnected(!!sess.interviewer);
-
-            // If WebSocket is not currently connected, use HTTP data
-            if (!isWsOpenRef.current) {
-              if (role === 'interviewer' && sess.codeDraft) {
-                setLiveCode(sess.codeDraft.code);
-                setLiveLanguage(sess.codeDraft.language);
-              }
-
-              if (sess.submissions) {
-                setLiveSubmissions(
-                  sess.submissions.map((s: {
-                    id: string;
-                    verdict: string;
-                    stdout: string | null;
-                    stderr: string | null;
-                    compileOutput: string | null;
-                    executionTime: number | null;
-                    memory: number | null;
-                    createdAt: string;
-                  }) => ({
-                    submissionId: s.id,
-                    verdict: s.verdict,
-                    stdout: s.stdout,
-                    stderr: s.stderr,
-                    compileOutput: s.compileOutput,
-                    executionTime: s.executionTime,
-                    memory: s.memory,
-                    createdAt: s.createdAt,
-                  }))
-                );
-              }
-            }
-          }
+      if (sendDebounceRef.current) clearTimeout(sendDebounceRef.current);
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch {
+          // ignore
         }
-      } catch (e) {
-        console.error('Peer sync poll error:', e);
       }
-    }
-
-    // Initial sync
-    syncPeerState();
-
-    // Fast 800ms polling when WS offline, 5000ms heartbeat when WS active
-    const pollInterval = setInterval(() => {
-      syncPeerState();
-    }, isWsOpenRef.current ? 5000 : 800);
-
-    return () => {
-      isMounted = false;
-      clearInterval(pollInterval);
     };
-  }, [sessionId, role]);
+  }, [sessionId, userId, role, userName, initialCode, initialLanguage]);
 
-  // 3. Ultra Low-Latency Candidate Code Broadcasting (<80ms throttle)
+  // 2. Candidate broadcasts code update with 80ms throttle
   const sendCodeUpdate = useCallback(
     (code: string, language: string) => {
       if (role !== 'candidate') return;
 
       pendingPayloadRef.current = { code, language };
 
-      if (sendDebounceRef.current) clearTimeout(sendDebounceRef.current);
+      if (sendDebounceRef.current) return;
 
       sendDebounceRef.current = setTimeout(() => {
+        sendDebounceRef.current = null;
         if (!pendingPayloadRef.current) return;
-        const { code: c, language: l } = pendingPayloadRef.current;
 
-        // 1. Send via WebSocket if open (Instant <50ms transport)
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        const payloadToSend = pendingPayloadRef.current;
+        pendingPayloadRef.current = null;
+
+        if (isWsOpenRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(
             JSON.stringify({
               type: 'CODE_UPDATE',
               sessionId,
               userId,
               role: 'candidate',
-              payload: { code: c, language: l },
+              payload: payloadToSend,
             })
           );
         }
-      }, 80); // 80ms debounce yields ultra-smooth real-time experience
+      }, 80);
     },
     [sessionId, userId, role]
   );
 
-  // 4. Broadcast execution result to interviewer
+  // 3. Broadcast execution results
   const broadcastRunResult = useCallback(
     (result: PeerRunResult) => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (isWsOpenRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(
           JSON.stringify({
             type: 'RUN_RESULT',
             sessionId,
             userId,
+            role,
             payload: result,
           })
         );
       }
     },
-    [sessionId, userId]
+    [sessionId, userId, role]
   );
+
+  // 4. Send chat message: instant WebSocket broadcast + Database persistence
+  const sendChatMessage = useCallback(
+    async (messageText: string) => {
+      if (!messageText || !messageText.trim()) return;
+
+      const trimmed = messageText.trim();
+
+      // Post to database for persistent transcript
+      try {
+        const res = await fetch(`/api/interview/${sessionId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: trimmed }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const createdMsg: ChatMessageItem = data.message;
+
+          // Add locally
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === createdMsg.id)) return prev;
+            return [...prev, createdMsg];
+          });
+
+          // Broadcast over WebSocket for sub-50ms peer receipt
+          if (isWsOpenRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'CHAT_MESSAGE',
+                sessionId,
+                userId,
+                role,
+                payload: createdMsg,
+              })
+            );
+          }
+        }
+      } catch (err) {
+        console.error('[Chat] Failed to send chat message:', err);
+      }
+    },
+    [sessionId, userId, role]
+  );
+
+  // 5. Fallback HTTP polling for presence/draft if WebSocket is offline
+  useEffect(() => {
+    if (transport === 'websocket') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/interview/${sessionId}/peer`);
+        if (res.ok) {
+          const data = await res.json();
+          if (role === 'interviewer' && data.draft) {
+            setLiveCode((prev) => (prev !== data.draft.code ? data.draft.code : prev));
+            setLiveLanguage((prev) => (prev !== data.draft.language ? data.draft.language : prev));
+          }
+        }
+      } catch {
+        // ignore polling failures
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [sessionId, role, transport]);
 
   return {
     liveCode,
     liveLanguage,
     liveSubmissions,
+    chatMessages,
     peerConnected,
     transport,
     connectionStatus,
     sendCodeUpdate,
     broadcastRunResult,
+    sendChatMessage,
+    loadChatHistory,
   };
 }

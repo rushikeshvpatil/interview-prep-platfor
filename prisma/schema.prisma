@@ -58,6 +58,7 @@ model User {
   notes               Note[]
   candidateSessions   InterviewSession[]    @relation("CandidateSessions")
   interviewerSessions InterviewSession[]    @relation("InterviewerSessions")
+  interviewMessages   InterviewMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -281,6 +282,7 @@ model InterviewSession {
   feedback    SessionFeedback[]
   codeDraft   SessionCodeDraft?
   testCases   InterviewTestCase[]
+  messages    InterviewMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -348,3 +350,20 @@ model SessionCodeDraft {
 
   session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
+
+model InterviewMessage {
+  id         String   @id @default(cuid())
+  sessionId  String
+  senderId   String
+  senderRole String   // "INTERVIEWER" | "CANDIDATE"
+  senderName String?
+  message    String
+  createdAt  DateTime @default(now())
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender  User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+

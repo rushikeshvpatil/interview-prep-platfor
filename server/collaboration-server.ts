@@ -53,6 +53,27 @@ wss.on('connection', (ws: WebSocket) => {
           const room = rooms.get(sessionId)!;
           room.add(clientInfo);
 
+          // If joining as candidate, cache their initial code if provided
+          if (clientInfo.role === 'candidate' && payload?.initialCode) {
+            roomCodeState.set(sessionId, {
+              code: payload.initialCode,
+              language: payload.initialLanguage || 'python',
+              lastUpdated: new Date().toISOString(),
+            });
+
+            // Immediately broadcast initial code to any interviewers already in the room
+            broadcastToRoom(
+              sessionId,
+              {
+                type: 'CODE_INIT',
+                code: payload.initialCode,
+                language: payload.initialLanguage || 'python',
+                timestamp: new Date().toISOString(),
+              },
+              ws // Exclude the candidate
+            );
+          }
+
           // If joining as interviewer and room already has cached candidate code, send it immediately
           if (clientInfo.role === 'interviewer' && roomCodeState.has(sessionId)) {
             const cached = roomCodeState.get(sessionId)!;
@@ -113,10 +134,22 @@ wss.on('connection', (ws: WebSocket) => {
           break;
         }
 
+        case 'CHAT_MESSAGE': {
+          if (!clientInfo) return;
+
+          // Broadcast chat message to everyone in the room
+          broadcastToRoom(clientInfo.sessionId, {
+            type: 'CHAT_MESSAGE',
+            message: payload,
+            timestamp: new Date().toISOString(),
+          });
+          break;
+        }
+
         case 'RUN_RESULT': {
           if (!clientInfo) return;
 
-          // Broadcast execution results to interviewers
+          // Broadcast execution results to room
           broadcastToRoom(clientInfo.sessionId, {
             type: 'RUN_RESULT',
             result: payload,
@@ -158,34 +191,47 @@ wss.on('connection', (ws: WebSocket) => {
           });
         }
       }
-      console.log(`[WS] ${name} (${role}) disconnected from session: ${sessionId}`);
+      console.log(`[WS] ${name} (${role}) left session: ${sessionId}`);
     }
+  });
+
+  ws.on('error', (err) => {
+    console.error('[WS Socket Error]:', err.message);
   });
 });
 
-function broadcastToRoom(sessionId: string, messageObj: object, excludeWs?: WebSocket) {
+// Broadcast helper
+function broadcastToRoom(sessionId: string, data: object, excludeWs?: WebSocket) {
   const room = rooms.get(sessionId);
   if (!room) return;
 
-  const payload = JSON.stringify(messageObj);
+  const messageStr = JSON.stringify(data);
   for (const client of room) {
     if (client.ws.readyState === WebSocket.OPEN && client.ws !== excludeWs) {
-      client.ws.send(payload);
+      client.ws.send(messageStr);
     }
   }
 }
 
-// Keep-alive heartbeat interval
-const heartbeat = setInterval(() => {
-  for (const [, room] of rooms) {
+// Heartbeat interval to detect stale/disconnected clients
+const heartbeatInterval = setInterval(() => {
+  for (const [sessionId, room] of rooms.entries()) {
     for (const client of room) {
-      if (client.ws.readyState === WebSocket.OPEN) {
+      if (!client.isAlive) {
+        console.log(`[WS Heartbeat] Terminating inactive connection for ${client.name} in session ${sessionId}`);
+        client.ws.terminate();
+        room.delete(client);
+      } else {
+        client.isAlive = false;
         client.ws.ping();
       }
     }
+    if (room.size === 0) {
+      rooms.delete(sessionId);
+    }
   }
-}, 25000);
+}, 30000);
 
 wss.on('close', () => {
-  clearInterval(heartbeat);
+  clearInterval(heartbeatInterval);
 });

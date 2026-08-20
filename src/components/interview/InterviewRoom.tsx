@@ -10,6 +10,7 @@ import { AIMessageFeed } from '@/components/interview/AIMessageFeed';
 import { ScorecardModal } from '@/components/interview/ScorecardModal';
 import { PeerViewer } from '@/components/interview/PeerViewer';
 import { PeerReviewModal } from '@/components/interview/PeerReviewModal';
+import { InterviewChatPanel } from '@/components/interview/InterviewChatPanel';
 import { usePeerCollaboration } from '@/hooks/usePeerCollaboration';
 
 // Dynamically import Monaco Editor to avoid SSR issues
@@ -101,7 +102,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
   const [session, setSession] = useState<InterviewSessionData>(initialSession);
 
   // Left Panel Tabs
-  const [leftTab, setLeftTab] = useState<'problem' | 'ai'>('problem');
+  const [leftTab, setLeftTab] = useState<'problem' | 'ai' | 'chat'>('problem');
   const [unreadAIMessages, setUnreadAIMessages] = useState<number>(0);
   const [showScorecard, setShowScorecard] = useState<boolean>(false);
   const [showPeerReview, setShowPeerReview] = useState<boolean>(false);
@@ -130,6 +131,8 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
     peerConnected,
     sendCodeUpdate,
     broadcastRunResult,
+    chatMessages,
+    sendChatMessage,
   } = usePeerCollaboration({
     sessionId: session.id,
     userId: currentUserId || session.userId || 'candidate-user',
@@ -240,7 +243,9 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
   };
 
   const handleLanguageChange = (newLang: string) => {
+    if (session.status === 'COMPLETED' || isRunning) return;
     setLanguage(newLang);
+
     const defaultTemplate = STARTER_TEMPLATES[newLang] || '';
     if (!code || code === STARTER_TEMPLATES[language]) {
       setCode(defaultTemplate);
@@ -379,15 +384,15 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
       />
 
       {/* ============================================================
-          TOP HEADER BAR
+          TOP NAVIGATION BAR
           ============================================================ */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4">
-        {/* Left: Session / Problem branding */}
+        {/* Left: Back Link & Session Title */}
         <div className="flex items-center gap-3">
           <Link
             href="/interview/schedule"
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:text-foreground transition-colors"
-            title="Back to Scheduled Sessions"
+            title="Back to Sessions"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
@@ -397,11 +402,8 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold text-foreground line-clamp-1">
-                {session.problem?.title || 'General Algorithmic Interview Session'}
+                {session.problem?.title || 'General Technical Interview'}
               </h1>
-              <Badge variant={session.mode === 'AI' ? 'primary' : 'warning'} className="text-[10px]">
-                {session.mode === 'AI' ? 'AI Mode' : 'Peer Mode'}
-              </Badge>
               {session.problem?.difficulty && (
                 <Badge
                   variant={
@@ -416,92 +418,79 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
                   {session.problem.difficulty}
                 </Badge>
               )}
+              <Badge variant={session.mode === 'PEER' ? 'warning' : 'primary'} className="text-[10px]">
+                {session.mode === 'PEER' ? 'Peer Interview' : 'AI Interview'}
+              </Badge>
             </div>
           </div>
         </div>
 
-        {/* Center: Live Countdown Timer & Peer Presence */}
+        {/* Center: Live Timer & Sync Status */}
         <div className="flex items-center gap-2">
-          <div
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-mono font-bold tracking-wider ${
-              timeLeftSec <= 300 && !isCompleted
-                ? 'border-destructive bg-destructive/10 text-destructive animate-pulse'
-                : 'border-border bg-background text-foreground'
-            }`}
-          >
+          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1 text-xs font-mono font-bold">
             <svg className="h-3.5 w-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
-            <span>{isCompleted ? '00:00 (Ended)' : formatTimer(timeLeftSec)}</span>
+            <span className={timeLeftSec < 300 && !isCompleted ? 'text-destructive animate-pulse' : ''}>
+              {isCompleted ? '00:00 (Ended)' : formatTimer(timeLeftSec)}
+            </span>
           </div>
 
           {session.mode === 'PEER' && (
-            <Badge variant={peerConnected ? 'success' : 'default'} className="text-[10px]">
-              {peerConnected ? '● Peer Connected' : '⏳ Waiting for Peer'}
+            <Badge
+              variant={peerConnected ? 'success' : 'default'}
+              className="text-[10px] hidden sm:inline-flex"
+            >
+              {peerConnected ? '● Live Synced' : 'Connecting...'}
             </Badge>
           )}
 
-          <span className="hidden sm:inline-flex text-[11px] text-muted-foreground">
-            {autosaveStatus === 'saving' ? (
-              <span className="text-warning">Saving draft...</span>
-            ) : autosaveStatus === 'saved' ? (
-              <span className="text-muted-foreground/60">✓ Autosaved</span>
-            ) : (
-              <span className="text-destructive">Autosave failed</span>
-            )}
-          </span>
+          {autosaveStatus === 'saving' && (
+            <span className="text-[11px] text-warning hidden md:inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning animate-ping" />
+              Saving draft...
+            </span>
+          )}
+          {autosaveStatus === 'saved' && (
+            <span className="text-[11px] text-muted-foreground/60 hidden md:inline-flex">
+              ✓ Saved
+            </span>
+          )}
         </div>
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          {session.mode === 'PEER' && session.inviteToken && (
-            <button
+          {session.mode === 'PEER' && session.inviteToken && !isCompleted && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={handleCopyInviteLink}
-              className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer shadow-2xs"
-              title="Copy Invitation Link for Interviewer"
+              className="text-xs hidden sm:inline-flex"
             >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
-              </svg>
-              <span>{copiedInvite ? '✓ Link Copied' : 'Invite Interviewer'}</span>
-            </button>
+              {copiedInvite ? '✓ Link Copied' : 'Share Invite'}
+            </Button>
           )}
 
-          {/* Focus Mode */}
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={toggleFocusMode}
-            className="hidden sm:inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            title="Toggle Fullscreen Focus Mode"
+            className="text-xs hidden md:inline-flex px-2"
+            title="Toggle Fullscreen"
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              {isFullscreen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-              )}
-            </svg>
-            <span>{isFullscreen ? 'Exit Focus' : 'Focus Mode'}</span>
-          </button>
-
-          {isCompleted && session.mode === 'AI' && (
-            <Button variant="primary" size="sm" onClick={() => setShowScorecard(true)} className="text-xs">
-              View Scorecard
-            </Button>
-          )}
-
-          {isCompleted && session.mode === 'PEER' && (
-            <Button variant="primary" size="sm" onClick={() => setShowPeerReview(true)} className="text-xs">
-              View Peer Review
-            </Button>
-          )}
+            {isFullscreen ? 'Exit Fullscreen' : 'Focus Mode'}
+          </Button>
 
           {!isCompleted ? (
             <Button
+              type="button"
               variant="primary"
               size="sm"
               disabled={isEnding}
-              onClick={() => handleEndSession()}
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs"
+              onClick={handleEndSession}
+              className="text-xs shadow-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isEnding ? 'Ending...' : 'End Interview'}
             </Button>
@@ -515,7 +504,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
           MAIN 2-PANE WORKSPACE
           ============================================================ */}
       <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
-        {/* LEFT PANEL: Problem Context & AI Interviewer Tabs (40% width) */}
+        {/* LEFT PANEL: Problem Context, Chat & AI Interviewer Tabs (40% width) */}
         <div className="w-full lg:w-[40%] border-r border-border bg-card flex flex-col overflow-hidden">
           {/* Left Panel Tabs Header */}
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-muted/20 px-3">
@@ -530,6 +519,24 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
               >
                 Problem Details
               </button>
+
+              {session.mode === 'PEER' && (
+                <button
+                  onClick={() => setLeftTab('chat')}
+                  className={`relative px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    leftTab === 'chat'
+                      ? 'bg-background text-foreground shadow-2xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <span>💬 Interview Chat</span>
+                  {chatMessages.length > 0 && leftTab !== 'chat' && (
+                    <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                      {chatMessages.length}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {session.mode === 'AI' && (
                 <button
@@ -558,7 +565,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
                 rel="noopener noreferrer"
                 className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
               >
-                <span>{session.problem.platform}</span>
+                <span>View Original ({session.problem.platform})</span>
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
                 </svg>
@@ -568,7 +575,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
 
           {/* Left Panel Tab Content */}
           <div className="flex-1 overflow-y-auto">
-            {leftTab === 'problem' || session.mode === 'PEER' ? (
+            {leftTab === 'problem' && (
               <div className="p-5 space-y-5">
                 {/* Peer Interviewer banner */}
                 {session.mode === 'PEER' && (
@@ -582,7 +589,7 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
                       </Badge>
                     </div>
                     <p className="text-muted-foreground leading-relaxed text-[11px]">
-                      Your code and test case executions are streamed in real time to your interviewer. When you are finished, click <strong>End Interview</strong>.
+                      Your code and test case executions are streamed in real time to your interviewer. Use the <strong>Interview Chat</strong> tab to communicate.
                     </p>
                   </div>
                 )}
@@ -595,11 +602,38 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
                   <h2 className="text-xl font-bold text-foreground mt-1">
                     {session.problem?.title || 'Open Technical Problem Solving'}
                   </h2>
+
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {session.problem?.difficulty && (
+                      <Badge
+                        variant={
+                          session.problem.difficulty === 'EASY'
+                            ? 'success'
+                            : session.problem.difficulty === 'MEDIUM'
+                            ? 'warning'
+                            : 'destructive'
+                        }
+                        className="text-[10px]"
+                      >
+                        {session.problem.difficulty}
+                      </Badge>
+                    )}
+
+                    <span className="text-xs text-muted-foreground">
+                      Source: {session.problem?.platform || 'Platform Catalog'}
+                    </span>
+
+                    {session.problem?.topics && session.problem.topics.length > 0 && (
+                      <span className="text-xs text-muted-foreground/80">
+                        • {session.problem.topics.map((t) => t.topic.name).join(' · ')}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Problem Summary / Description */}
                 <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Problem Statement</h3>
                   <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
                     {session.problem?.summary ||
                       'Implement your algorithmic solution in the code editor, explain your thought process, and test your code against the Judge0 sandbox.'}
@@ -636,7 +670,20 @@ function CandidateRoom({ initialSession, currentUserId = '' }: InterviewRoomProp
                   </div>
                 )}
               </div>
-            ) : (
+            )}
+
+            {leftTab === 'chat' && session.mode === 'PEER' && (
+              <InterviewChatPanel
+                sessionId={session.id}
+                currentUserId={currentUserId}
+                currentUserRole="CANDIDATE"
+                messages={chatMessages}
+                onSendMessage={sendChatMessage}
+                isSessionActive={!isCompleted}
+              />
+            )}
+
+            {leftTab === 'ai' && session.mode === 'AI' && (
               <AIMessageFeed
                 sessionId={session.id}
                 isSessionActive={!isCompleted}

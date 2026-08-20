@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { LANGUAGE_MAP } from '@/lib/judge0';
 import { usePeerCollaboration } from '@/hooks/usePeerCollaboration';
 import { InterviewSessionData } from '@/components/interview/InterviewRoom';
+import { InterviewChatPanel } from '@/components/interview/InterviewChatPanel';
 
 const Editor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
@@ -27,15 +28,17 @@ interface PeerViewerProps {
 }
 
 export function PeerViewer({ session: initialSession, currentUserId }: PeerViewerProps) {
-  const [session, setSession] = useState<InterviewSessionData>(initialSession);
-  const [leftTab, setLeftTab] = useState<'problem' | 'notes' | 'evaluation'>('problem');
+  const [session] = useState<InterviewSessionData>(initialSession);
+  const [leftTab, setLeftTab] = useState<'problem' | 'chat' | 'notes' | 'evaluation'>('problem');
 
   // Real-time synchronization hook
   const {
     liveCode,
     liveLanguage,
     liveSubmissions,
+    chatMessages,
     peerConnected,
+    sendChatMessage,
   } = usePeerCollaboration({
     sessionId: session.id,
     userId: currentUserId,
@@ -116,15 +119,15 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Debounced notes autosave
+  // Debounced Autosave Notes
   const saveNotes = useCallback(
-    async (textToSave: string) => {
+    async (notesText: string) => {
       try {
         setNotesAutosaveStatus('saving');
         const res = await fetch(`/api/interview/${session.id}/peer/notes`, {
-          method: 'PUT',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: textToSave }),
+          body: JSON.stringify({ notes: notesText }),
         });
         if (res.ok) {
           setNotesAutosaveStatus('saved');
@@ -138,38 +141,35 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
     [session.id]
   );
 
-  const handleNotesChange = (text: string) => {
-    setNotes(text);
+  const handleNotesChange = (value: string) => {
+    setNotes(value);
     if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
     notesTimerRef.current = setTimeout(() => {
-      saveNotes(text);
-    }, 1500);
+      saveNotes(value);
+    }, 800);
   };
 
-  // Submit peer feedback evaluation
+  // Submit Feedback Scorecard
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmittingFeedback(true);
-
     try {
       const res = await fetch(`/api/interview/${session.id}/peer/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           rubricScores,
-          strengths: strengths.split('\n').filter(Boolean),
-          improvements: improvements.split('\n').filter(Boolean),
-          notes,
           recommendation,
+          strengths: strengths.split('\n').filter((s) => s.trim().length > 0),
+          improvements: improvements.split('\n').filter((s) => s.trim().length > 0),
         }),
       });
 
       if (res.ok) {
         setSubmittedFeedback(true);
-        setSession((prev) => ({ ...prev, status: 'COMPLETED' }));
       }
-    } catch (e) {
-      console.error('Error submitting peer feedback:', e);
+    } catch (err) {
+      console.error('Error submitting feedback:', err);
     } finally {
       setSubmittingFeedback(false);
     }
@@ -178,25 +178,25 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
   const getVerdictBadge = (verdict: string) => {
     switch (verdict) {
       case 'ACCEPTED':
-        return <Badge variant="success">Accepted</Badge>;
+        return <Badge variant="success" className="font-semibold">Accepted</Badge>;
       case 'WRONG_ANSWER':
-        return <Badge variant="destructive">Wrong Answer</Badge>;
+        return <Badge variant="destructive" className="font-semibold">Wrong Answer</Badge>;
       case 'TIME_LIMIT_EXCEEDED':
-        return <Badge variant="warning">Time Limit</Badge>;
+        return <Badge variant="warning" className="font-semibold">Time Limit Exceeded</Badge>;
       case 'COMPILATION_ERROR':
-        return <Badge variant="destructive">Compile Error</Badge>;
+        return <Badge variant="destructive" className="font-semibold">Compilation Error</Badge>;
       case 'RUNTIME_ERROR':
-        return <Badge variant="destructive">Runtime Error</Badge>;
+        return <Badge variant="destructive" className="font-semibold">Runtime Error</Badge>;
       default:
         return <Badge variant="default">{verdict}</Badge>;
     }
   };
 
-  const isCompleted = session.status === 'COMPLETED';
+  const isCompleted = session.status === 'COMPLETED' || session.status === 'CANCELLED';
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
-      {/* Header */}
+      {/* Top Header */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4">
         <div className="flex items-center gap-3">
           <Link
@@ -249,7 +249,7 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
 
       {/* Main 2-Column Split */}
       <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
-        {/* LEFT COLUMN: Problem / Notes / Evaluation Form (40% width) */}
+        {/* LEFT COLUMN: Problem / Chat / Notes / Evaluation Form (40% width) */}
         <div className="w-full lg:w-[40%] border-r border-border bg-card flex flex-col overflow-hidden">
           {/* Tabs */}
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-muted/20 px-3">
@@ -261,6 +261,19 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
                 }`}
               >
                 Problem Details
+              </button>
+              <button
+                onClick={() => setLeftTab('chat')}
+                className={`relative px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  leftTab === 'chat' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span>💬 Chat</span>
+                {chatMessages.length > 0 && leftTab !== 'chat' && (
+                  <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                    {chatMessages.length}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setLeftTab('notes')}
@@ -282,31 +295,90 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
           </div>
 
           {/* Left Column Content */}
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex-1 overflow-y-auto">
             {leftTab === 'problem' && (
-              <div className="space-y-4 text-xs">
+              <div className="p-5 space-y-5 text-xs">
+                {/* Problem Header */}
                 <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Problem</span>
-                  <h2 className="text-lg font-bold text-foreground mt-0.5">{session.problem?.title || 'Algorithmic Problem'}</h2>
-                  {session.problem && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <Badge variant="warning">{session.problem.difficulty}</Badge>
-                      <span className="text-muted-foreground">{session.problem.platform}</span>
-                    </div>
-                  )}
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Problem Focus</span>
+                  <h2 className="text-xl font-bold text-foreground mt-1">
+                    {session.problem?.title || 'Algorithmic Problem'}
+                  </h2>
+
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {session.problem?.difficulty && (
+                      <Badge
+                        variant={
+                          session.problem.difficulty === 'EASY'
+                            ? 'success'
+                            : session.problem.difficulty === 'MEDIUM'
+                            ? 'warning'
+                            : 'destructive'
+                        }
+                        className="text-[10px]"
+                      >
+                        {session.problem.difficulty}
+                      </Badge>
+                    )}
+
+                    <span className="text-xs text-muted-foreground">
+                      Source: {session.problem?.platform || 'Platform Catalog'}
+                    </span>
+
+                    {session.problem?.externalUrl && (
+                      <a
+                        href={session.problem.externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        <span>View Original Problem ↗</span>
+                      </a>
+                    )}
+
+                    {session.problem?.topics && session.problem.topics.length > 0 && (
+                      <span className="text-xs text-muted-foreground/80">
+                        • {session.problem.topics.map((t) => t.topic.name).join(' · ')}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
+                {/* Problem Statement */}
                 <div className="space-y-1.5">
-                  <h3 className="font-semibold text-muted-foreground uppercase text-[11px]">Statement</h3>
-                  <p className="text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                  <h3 className="font-semibold text-muted-foreground uppercase text-[11px]">Problem Statement</h3>
+                  <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
                     {session.problem?.summary || 'Candidate is working on this algorithmic problem.'}
                   </p>
                 </div>
 
+                {/* Constraints */}
                 {session.problem?.constraints && (
                   <div className="space-y-1.5">
                     <h3 className="font-semibold text-muted-foreground uppercase text-[11px]">Constraints</h3>
                     <div className="rounded-lg bg-muted/40 p-2.5 font-mono text-foreground">{session.problem.constraints}</div>
+                  </div>
+                )}
+
+                {/* Test Cases / Examples */}
+                {session.problem?.testCases && session.problem.testCases.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-muted-foreground uppercase text-[11px]">Configured Test Cases</h3>
+                    {session.problem.testCases.map((tc, idx) => (
+                      <div key={tc.id} className="rounded-lg border border-border bg-background p-3 space-y-1.5 text-xs font-mono">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-muted-foreground">Test Case {idx + 1}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground">Input:</span>
+                          <span className="text-foreground">{tc.input}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground">Expected:</span>
+                          <span className="text-success font-semibold">{tc.expectedOutput}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -317,13 +389,25 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
                     <li>Did the candidate ask clarifying questions before coding?</li>
                     <li>Did they state optimal Big-O time and space complexity?</li>
                     <li>How did they react to test case failures or edge cases?</li>
+                    <li>Use the <strong>💬 Chat</strong> tab to ask follow-up questions during the interview.</li>
                   </ul>
                 </div>
               </div>
             )}
 
+            {leftTab === 'chat' && (
+              <InterviewChatPanel
+                sessionId={session.id}
+                currentUserId={currentUserId}
+                currentUserRole="INTERVIEWER"
+                messages={chatMessages}
+                onSendMessage={sendChatMessage}
+                isSessionActive={!isCompleted}
+              />
+            )}
+
             {leftTab === 'notes' && (
-              <div className="h-full flex flex-col space-y-3">
+              <div className="h-full flex flex-col p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">Private Scratchpad Notes</h3>
@@ -351,7 +435,7 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
             )}
 
             {leftTab === 'evaluation' && (
-              <div className="space-y-5 text-xs">
+              <div className="p-5 space-y-5 text-xs">
                 <div>
                   <h3 className="text-sm font-bold text-foreground">Candidate Evaluation Rubric</h3>
                   <p className="text-[11px] text-muted-foreground">
@@ -465,12 +549,12 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
             </div>
           </div>
 
-          {/* Monaco Editor in Read-Only Mode */}
+          {/* Monaco Editor in Read-Only Mode (using liveCode || initial draft) */}
           <div className="flex-1 min-h-[280px]">
             <Editor
               height="100%"
               language={LANGUAGE_MAP[liveLanguage]?.monacoLang || 'python'}
-              value={liveCode}
+              value={liveCode || session.codeDraft?.code || ''}
               theme="vs-dark"
               options={{
                 minimap: { enabled: false },
@@ -479,54 +563,86 @@ export function PeerViewer({ session: initialSession, currentUserId }: PeerViewe
                 scrollBeyondLastLine: false,
                 wordWrap: 'on',
                 tabSize: 4,
-                readOnly: true, // INTERVIEWER CANNOT EDIT CANDIDATE CODE
+                readOnly: true,
                 automaticLayout: true,
                 padding: { top: 12, bottom: 12 },
               }}
             />
           </div>
 
-          {/* Submissions & Output Drawer */}
-          <div className="h-56 shrink-0 border-t border-border bg-card flex flex-col">
-            <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-muted/20 px-3 text-xs font-semibold text-foreground">
-              <span>Candidate Test Executions ({liveSubmissions.length})</span>
+          {/* Real-time Judge0 Execution Output Stream Drawer */}
+          <div className="h-56 shrink-0 border-t border-border bg-card flex flex-col font-mono text-xs">
+            <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-muted/20 px-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-foreground">Candidate Submissions & Execution</span>
+                <span className="text-[11px] text-muted-foreground">
+                  ({liveSubmissions.length > 0 ? liveSubmissions.length : session.submissions?.length || 0})
+                </span>
+              </div>
+
               {liveSubmissions[0] && (
                 <div className="flex items-center gap-2">
                   {getVerdictBadge(liveSubmissions[0].verdict)}
                   {liveSubmissions[0].executionTime !== null && (
-                    <span className="text-[11px] font-mono text-muted-foreground">
-                      ⏱️ {liveSubmissions[0].executionTime.toFixed(3)}s
-                    </span>
+                    <span className="text-[11px] text-muted-foreground">⏱️ {liveSubmissions[0].executionTime.toFixed(3)}s</span>
+                  )}
+                  {liveSubmissions[0].memory !== null && (
+                    <span className="text-[11px] text-muted-foreground">💾 {(liveSubmissions[0].memory / 1024).toFixed(1)} MB</span>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
-              {liveSubmissions.length === 0 ? (
-                <p className="text-muted-foreground py-6 text-center">
-                  Candidate has not executed code in this session yet.
-                </p>
-              ) : (
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {liveSubmissions.length > 0 ? (
                 <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Latest Run Verdict:</span>
+                    <span>{new Date(liveSubmissions[0].createdAt).toLocaleTimeString()}</span>
+                  </div>
+
                   {liveSubmissions[0].compileOutput && (
-                    <div className="rounded bg-destructive/10 p-2 text-destructive">
-                      <span className="font-bold">Compile Error:</span>
-                      <pre className="mt-1 whitespace-pre-wrap">{liveSubmissions[0].compileOutput}</pre>
+                    <div>
+                      <span className="text-[11px] font-bold text-destructive">Compilation Error:</span>
+                      <pre className="mt-1 rounded bg-destructive/10 p-2 text-destructive whitespace-pre-wrap">
+                        {liveSubmissions[0].compileOutput}
+                      </pre>
                     </div>
                   )}
+
                   {liveSubmissions[0].stderr && (
-                    <div className="rounded bg-destructive/10 p-2 text-destructive">
-                      <span className="font-bold">Stderr:</span>
-                      <pre className="mt-1 whitespace-pre-wrap">{liveSubmissions[0].stderr}</pre>
+                    <div>
+                      <span className="text-[11px] font-bold text-destructive">Runtime Error / Stderr:</span>
+                      <pre className="mt-1 rounded bg-destructive/10 p-2 text-destructive whitespace-pre-wrap">
+                        {liveSubmissions[0].stderr}
+                      </pre>
                     </div>
                   )}
+
                   {liveSubmissions[0].stdout && (
-                    <div className="rounded bg-background border border-border p-2 text-foreground">
-                      <span className="font-bold text-muted-foreground">Stdout:</span>
-                      <pre className="mt-1 whitespace-pre-wrap">{liveSubmissions[0].stdout}</pre>
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground">Output:</span>
+                      <pre className="mt-1 rounded bg-background p-2 text-foreground whitespace-pre-wrap border border-border">
+                        {liveSubmissions[0].stdout}
+                      </pre>
                     </div>
                   )}
+                </div>
+              ) : session.submissions && session.submissions.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Previous Submission ({getVerdictBadge(session.submissions[0].verdict)}):</span>
+                    <span>{new Date(session.submissions[0].createdAt).toLocaleTimeString()}</span>
+                  </div>
+                  {session.submissions[0].stdout && (
+                    <pre className="rounded bg-background p-2 text-foreground whitespace-pre-wrap border border-border">
+                      {session.submissions[0].stdout}
+                    </pre>
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground/60">
+                  <span>Waiting for candidate to execute code...</span>
                 </div>
               )}
             </div>
